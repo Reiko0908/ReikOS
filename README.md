@@ -170,4 +170,4 @@ Five-level page table: PGD → P4D → PUD → PMD → PT, matching the Linux x8
 
 ## License
 
-Source code is licensed for personal academic use only — specifically for students enrolled in course CO2018 at HCMC University of Technology.
+Copyright is reserved by the faculty staff members involved in code development. Licensees are granted personal permission to use and modify the source code solely for studying in course CO2018 at HCMUT. See LICENSE for full terms.
