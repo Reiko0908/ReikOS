@@ -177,7 +177,7 @@ struct krnl_t *krnl = caller->krnl;
  **/
 uint32_t pte_get_entry(struct pcb_t *caller, addr_t pgn)
 {
-//struct krnl_t *krnl = caller->krnl;
+struct krnl_t *krnl = caller->krnl;
   uint32_t pte = 0;
   addr_t pgd=0;
   addr_t p4d=0;
@@ -187,9 +187,8 @@ uint32_t pte_get_entry(struct pcb_t *caller, addr_t pgn)
 	
   /* TODO Perform multi-level page mapping */
   get_pd_from_pagenum(pgn, &pgd, &p4d, &pud, &pmd, &pt);
-  //... krnl->mm->pgd
-  //... krnl->mm->pt
-  //pte = &krnl->mm->pt;	
+  /* Traverse hierarchy and retrieve PTE value */
+  pte = krnl->mm->pt[pt];
 	
   return pte;
 }
