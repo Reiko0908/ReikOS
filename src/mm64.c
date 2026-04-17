@@ -232,14 +232,14 @@ addr_t vmap_page_range(struct pcb_t *caller,           // process call
                     struct framephy_struct *frames, // list of the mapped frames
                     struct vm_rg_struct *ret_rg)    // return mapped region, the real mapped fp
 {                                                   // no guarantee all given pages are mapped
-  struct framephy_struct *fpit;
+  // struct framephy_struct *fpit;
   int pgit = 0;
   addr_t pgn;
 
   // TODO: update the rg_end and rg_start of ret_rg 
-  ret_rg->rg_end =  addr + pgnum*PAGE_SIZE;
+  ret_rg->rg_end =  addr + pgnum*PAGING_PAGESZ;
   ret_rg->rg_start = addr;
-  // ret_rg->vmaid = ...
+  ret_rg->vmaid = 0; // default
 
   /* TODO map range of frame to address space
    *      [addr to addr + pgnum*PAGING_PAGESZ
@@ -247,7 +247,15 @@ addr_t vmap_page_range(struct pcb_t *caller,           // process call
    *                    caller->krnl->mm->pud...
    *                    ...
    */
-
+  for(;pgit < pgnum; pgit++){
+    if(frames == NULL){
+      ret_rg->rg_end = pgit*PAGING_PAGESZ + addr;
+      return -1;
+    }
+    pgn = (addr >> PAGING64_ADDR_PT_SHIFT) + pgit; //srl 12 bits (no offset) to get the base VPN
+    pte_set_fpn(caller, pgn, frames->fpn); // map the frame to pte
+    frames = frames->fp_next;
+  }
   /* Tracking for later page replacement activities (if needed)
    * Enqueue new usage page */
   //enlist_pgn_node(&caller->krnl->mm->fifo_pgn, pgn64 + pgit);
@@ -288,7 +296,7 @@ addr_t alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_st
     }
     else
     { // TODO: ERROR CODE of obtaining somes but not enough frames
-      return -3000; //out of memory
+      return -1; //out of memory
     }
   }
 
