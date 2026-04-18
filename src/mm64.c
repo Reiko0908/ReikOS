@@ -225,35 +225,22 @@ addr_t vmap_page_range(
     struct framephy_struct *frames, // list of the mapped frames
     struct vm_rg_struct *ret_rg)    // return mapped region, the real mapped fp
 {                                   // no guarantee all given pages are mapped
-                                    // struct framephy_struct *fpit;
-  // int pgit = 0;
-  // addr_t pgn;
-
-  /* TODO: update the rg_end and rg_start of ret_rg
-  //ret_rg->rg_end =  ....
-  //ret_rg->rg_start = ...
-  //ret_rg->vmaid = ...
-  */
-
-  /* TODO map range of frame to address space
-   *      [addr to addr + pgnum*PAGING_PAGESZ
-   *      in page table caller->krnl->mm->pgd,
-   *                    caller->krnl->mm->pud...
-   *                    ...
-   */
+  struct framephy_struct *fpit = frames;
+  int pgit = 0;
+  addr_t pgn;
+  ret_rg->rg_start = addr;
+  ret_rg->vmaid = 0;
   for(;pgit < pgnum; pgit++){
     if(frames == NULL){
       ret_rg->rg_end = pgit*PAGING_PAGESZ + addr;
       return -1;
     }
     pgn = (addr >> PAGING64_ADDR_PT_SHIFT) + pgit; //srl 12 bits (no offset) to get the base VPN
-    pte_set_fpn(caller, pgn, frames->fpn); // map the frame to pte
-    frames = frames->fp_next;
+    pte_set_fpn(caller, pgn, fpit->fpn); // map the frame to pte
+    enlist_pgn_node(&caller->mm->fifo_pgn, pgn); // track the usage of page for later page replacement
+    fpit = fpit->fp_next;
   }
-  /* Tracking for later page replacement activities (if needed)
-   * Enqueue new usage page */
-  // enlist_pgn_node(&caller->krnl->mm->fifo_pgn, pgn64 + pgit);
-
+  ret_rg->rg_end = pgit*PAGING_PAGESZ + addr;
   return 0;
 }
 
@@ -266,34 +253,36 @@ addr_t vmap_page_range(
 
 addr_t alloc_pages_range(struct pcb_t *caller, int req_pgnum,
                          struct framephy_struct **frm_lst) {
-  // addr_t fpn;
-  // int pgit;
-  // struct framephy_struct *newfp_str = NULL;
+  addr_t fpn;
+  int pgit;
+  struct framephy_struct *newfp = NULL;
+  struct framephy_struct *tail = NULL;
 
-  /* TODO: allocate the page
-  //caller-> ...
-  //frm_lst-> ...
-  */
-
-  /*
-    for (pgit = 0; pgit < req_pgnum; pgit++)
-    {
-      // TODO: allocate the page
-      if (MEMPHY_get_freefp(caller->mram, &fpn) == 0)
-      {
-        newfp_str->fpn = fpn;
-      }
-      else
-      { // TODO: ERROR CODE of obtaining somes but not enough frames
-      }
+  /* TODO: allocate the page */
+  *frm_lst = NULL;
+  for (pgit = 0; pgit < req_pgnum; pgit++) {
+    if (MEMPHY_get_freefp(caller->krnl->mram, &fpn) != 0) {
+      addr_t victim_pgn, swpfpn;
+      if (find_victim_page(caller->mm, &victim_pgn) != 0) return -3000;
+      if (MEMPHY_get_freefp(caller->krnl->active_mswp, &swpfpn) != 0) return -3000;
+      fpn = PAGING_FPN(pte_get_entry(caller, victim_pgn));
+      __swap_cp_page(caller->krnl->mram, fpn, caller->krnl->active_mswp, swpfpn);
+      pte_set_swap(caller, victim_pgn, 0, swpfpn);
     }
-  */
-
-  /* End TODO */
-
+    newfp = malloc(sizeof(struct framephy_struct));
+    newfp->fpn = fpn;
+    newfp->fp_next = NULL;
+    newfp->owner = caller->mm; 
+    if (*frm_lst == NULL) {
+      *frm_lst = newfp;
+      tail = newfp;
+    } else {
+      tail->fp_next = newfp;
+      tail = newfp;
+    }
+  }
   return 0;
 }
-
 /*
  * vm_map_ram - do the mapping all vm are to ram storage device
  * @caller    : caller
@@ -307,7 +296,6 @@ addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
                   addr_t mapstart, int incpgnum, struct vm_rg_struct *ret_rg) {
   struct framephy_struct *frm_lst = NULL;
   addr_t ret_alloc = 0;
-  // int pgnum = incpgnum;
 
   /*@bksysnet: author provides a feasible solution of getting frames
    *FATAL logic in here, wrong behaviour if we have not enough page
@@ -316,16 +304,8 @@ addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
    *in endless procedure of swap-off to get frame and we have not provide
    *duplicate control mechanism, keep it simple
    */
-  // ret_alloc = alloc_pages_range(caller, pgnum, &frm_lst);
-
-  if (ret_alloc < 0 && ret_alloc != -3000)
-    return -1;
-
-  /* Out of memory */
-  if (ret_alloc == -3000) {
-    return -1;
-  }
-
+  ret_alloc = alloc_pages_range(caller, incpgnum, &frm_lst);
+  if (ret_alloc < 0) return -1;
   /* it leaves the case of memory is enough but half in ram, half in swap
    * do the swaping all to swapper to get the all in ram */
   vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg);
