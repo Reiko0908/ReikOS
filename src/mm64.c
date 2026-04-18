@@ -233,7 +233,15 @@ addr_t vmap_page_range(
    *                    caller->krnl->mm->pud...
    *                    ...
    */
-
+  for(;pgit < pgnum; pgit++){
+    if(frames == NULL){
+      ret_rg->rg_end = pgit*PAGING_PAGESZ + addr;
+      return -1;
+    }
+    pgn = (addr >> PAGING64_ADDR_PT_SHIFT) + pgit; //srl 12 bits (no offset) to get the base VPN
+    pte_set_fpn(caller, pgn, frames->fpn); // map the frame to pte
+    frames = frames->fp_next;
+  }
   /* Tracking for later page replacement activities (if needed)
    * Enqueue new usage page */
   // enlist_pgn_node(&caller->krnl->mm->fifo_pgn, pgn64 + pgit);
