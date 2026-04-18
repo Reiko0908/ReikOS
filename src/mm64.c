@@ -14,6 +14,7 @@
  */
 
 #include "mm64.h"
+#include <cstdint>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -126,14 +127,13 @@ addr_t *get_pte(struct mm_struct *mm, addr_t pgn, bool alloc) {
  * @swpoff : swap offset
  */
 int pte_set_swap(struct pcb_t *caller, addr_t pgn, int swptyp, addr_t swpoff) {
-  struct krnl_t *krnl = caller->krnl;
+  struct mm_struct *mm = caller->mm;
   addr_t *pte;
 #ifdef MM64
-  /* Get value from the system */
   /* TODO Perform multi-level page mapping */
-  pte = get_pte(krnl->mm, pgn, true);
+  pte = get_pte(mm, pgn, 1);
 #else
-  pte = &krnl->mm->pgd[pgn];
+  pte = &mm->pgd[pgn];
 #endif
   SETBIT(*pte, PAGING_PTE_PRESENT_MASK);
   SETBIT(*pte, PAGING_PTE_SWAPPED_MASK);
@@ -150,14 +150,13 @@ int pte_set_swap(struct pcb_t *caller, addr_t pgn, int swptyp, addr_t swpoff) {
  * @fpn   : frame page number (FPN)
  */
 int pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn) {
-  struct krnl_t *krnl = caller->krnl;
+  struct mm_struct *mm = caller->mm;
   addr_t *pte;
 #ifdef MM64
-  /* Get value from the system */
   /* TODO Perform multi-level page mapping */
-  pte = get_pte(caller->mm, pgn, true);
+  pte = get_pte(mm, pgn, 1);
 #else
-  pte = &krnl->mm->pgd[pgn];
+  pte = &mm->pgd[pgn];
 #endif
   SETBIT(*pte, PAGING_PTE_PRESENT_MASK);
   CLRBIT(*pte, PAGING_PTE_SWAPPED_MASK);
@@ -173,10 +172,14 @@ int pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn) {
  * @ret    : page table entry
  **/
 uint32_t pte_get_entry(struct pcb_t *caller, addr_t pgn) {
-  struct krnl_t *krnl = caller->krnl;
-  addr_t *pte_ptr = get_pte(krnl->mm, pgn, false);
+  struct mm_struct *mm = caller->mm;
+#ifdef MM64
+  pte_ptr = get_pte(mm, pgn, 0);
   if (pte_ptr == NULL) return 0;
   return (uint32_t)(*pte_ptr);
+#else
+  return (uint32_t)mm->pgd[pgn]);
+#endif
 }
 
 /* Set PTE page table entry
@@ -184,10 +187,15 @@ uint32_t pte_get_entry(struct pcb_t *caller, addr_t pgn) {
  * @pgn    : page number
  * @ret    : page table entry
  **/
-int pte_set_entry(struct pcb_t *caller, addr_t pgn, uint32_t pte_val) {
-  struct krnl_t *krnl = caller->krnl;
-  krnl->mm->pgd[pgn] = pte_val;
-
+int pte_set_entry(struct pcb_t *caller, addr_t pgn, uint32_t pte_val)
+{
+  struct mm_struct *mm = caller->mm;
+#ifdef MM64
+  addr_t *pte = get_pte(mm, pgn, 1);
+  *pte = (addr_t)pte_val;
+#else
+  mm->pgd[pgn] = pte_val;
+#endif
   return 0;
 }
 
