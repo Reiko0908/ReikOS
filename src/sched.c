@@ -101,6 +101,7 @@ struct pcb_t * get_mlq_proc(void) {
 
   if (proc != NULL)
     enqueue(&running_list, proc);
+  pthread_mutex_unlock(&queue_lock);
   return proc;	
 }
 
@@ -115,6 +116,7 @@ void put_mlq_proc(struct pcb_t * proc) {
 	 */
 
 	pthread_mutex_lock(&queue_lock);
+	purgequeue(&running_list, proc);
 	enqueue(&mlq_ready_queue[proc->prio], proc);
 	pthread_mutex_unlock(&queue_lock);
 }
@@ -154,7 +156,9 @@ struct pcb_t * get_proc(void) {
 	 *       It worth to protect by a mechanism.
 	 * 
 	 */
-
+	proc = dequeue(&ready_queue);
+	if (proc != NULL)
+		enqueue(&running_list, proc);
 	pthread_mutex_unlock(&queue_lock);
 
 	return proc;
@@ -170,7 +174,8 @@ void put_proc(struct pcb_t * proc) {
 	 */
 
 	pthread_mutex_lock(&queue_lock);
-	enqueue(&run_queue, proc);
+	purgequeue(&running_list, proc);
+	enqueue(&ready_queue, proc);
 	pthread_mutex_unlock(&queue_lock);
 }
 
