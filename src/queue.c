@@ -26,10 +26,10 @@ struct pcb_t *dequeue(struct queue_t *q)
   int highest_prio_idx = 0;
   for (int i = 1; i < q->size; i++) {
 #ifdef MLQ_SCHED
-    if (q->proc[i]->prio > q->proc[highest_prio_idx]->priority)
+    if (q->proc[i]->prio < q->proc[highest_prio_idx]->prio)
       highest_prio_idx = i;
 #else
-    if (q->proc[i]->priority > q->proc[highest_prio_idx]->priority)
+    if (q->proc[i]->priority < q->proc[highest_prio_idx]->priority)
       highest_prio_idx = i;
 #endif
   }
