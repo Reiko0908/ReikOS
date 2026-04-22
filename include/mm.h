@@ -123,6 +123,7 @@ int __write_kernel_mem(struct pcb_t *caller, int vmaid, int rgid, addr_t offset,
 /* Page directory prototypes */
 int get_pd_from_address(addr_t addr, addr_t* pgd, addr_t* p4d, addr_t* pud, addr_t* pmd, addr_t* pt);
 int get_pd_from_pagenum(addr_t pgn, addr_t* pgd, addr_t* p4d, addr_t* pud, addr_t* pmd, addr_t* pt);
+static addr_t *get_pte(struct mm_struct *mm, addr_t pgn, int alloc);
 int pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn);
 int pte_set_swap(struct pcb_t *caller, addr_t pgn, int swptyp, addr_t swpoff);
 uint32_t pte_get_entry(struct pcb_t *caller, addr_t pgn);

@@ -27,7 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-// #if defined(MM64)
+#if defined(MM64)
 
 /* =========================================================================
  * init_pte - initialise a PTE entry value in place
@@ -190,10 +190,11 @@ int pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn)
 uint32_t pte_get_entry(struct pcb_t *caller, addr_t pgn)
 {
   struct mm_struct *mm = caller->mm;
+  addr_t *pte;
 #ifdef MM64
-  pte_ptr = get_pte(mm, pgn, 0);
-  if (pte_ptr == NULL) return 0;
-  return (uint32_t)(*pte_ptr);
+  pte = get_pte(mm, pgn, 0);
+  if (pte == NULL) return 0;
+  return (uint32_t)(*pte);
 #else
   return (uint32_t)mm->pgd[pgn]);
 #endif
@@ -306,7 +307,7 @@ addr_t alloc_pages_range(struct pcb_t *caller, int req_pgnum,
 }
 
 /* =========================================================================
- * vm_map_range - allocate physical frames and map them into virtual space
+ * vm_map_ram - do the mapping all vm are to ram storage device
  * ========================================================================= */
 addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
                   addr_t mapstart, int incpgnum, struct vm_rg_struct *ret_rg) {
