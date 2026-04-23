@@ -170,24 +170,11 @@ int MEMPHY_get_freefp(struct memphy_struct *mp, addr_t *retfpn)
 
 int MEMPHY_dump(struct memphy_struct *mp)
 {
-  int i;
-  
   if (mp == NULL)
     return -1;
-  
-  printf("=== MEMPHY Dump ===\n");
-  printf("Max Size: %d bytes\n", mp->maxsz);
-  printf("Random Access Mode: %d\n", mp->rdmflg);
-  printf("Cursor Position: %d\n", mp->cursor);
-  printf("\nMemory Content:\n");
-  
-  /* Print memory in rows of 16 bytes */
-  for (i = 0; i < mp->maxsz; i++) {
-    if (i % 16 == 0)
-      printf("[0x%04x] ", i);
-    
+
+  for (int i = 0; i < mp->maxsz; i++) {
     printf("%02x ", mp->storage[i]);
-    
     if ((i + 1) % 16 == 0)
       printf("\n");
   }
