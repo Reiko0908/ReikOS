@@ -1,3 +1,4 @@
+#include "os-mm.h"
 #ifndef MM_H
 
 #include "common.h"
@@ -105,6 +106,7 @@ int enlist_pgn_node(struct pgn_t **pgnlist, addr_t pgn);
 int vmap_pgd_memset(struct pcb_t *caller, addr_t addr, int pgnum);
 addr_t vmap_page_range(struct pcb_t *caller, addr_t addr, int pgnum, 
                     struct framephy_struct *frames, struct vm_rg_struct *ret_rg);
+addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend, addr_t mapstart, int incpgnum, struct vm_rg_struct *ret_rg);
 addr_t vm_map_range(struct pcb_t *caller, addr_t astart, addr_t aend, addr_t mapstart, int incpgnum, struct vm_rg_struct *ret_rg);
 addr_t vm_map_kernel(struct pcb_t *caller, addr_t astart, addr_t aend, addr_t mapstart, int incpgnum, struct vm_rg_struct *ret_rg);
 addr_t alloc_pages_range(struct pcb_t *caller, int incpgnum, struct framephy_struct **frm_lst);
@@ -123,6 +125,7 @@ int __write_kernel_mem(struct pcb_t *caller, int vmaid, int rgid, addr_t offset,
 /* Page directory prototypes */
 int get_pd_from_address(addr_t addr, addr_t* pgd, addr_t* p4d, addr_t* pud, addr_t* pmd, addr_t* pt);
 int get_pd_from_pagenum(addr_t pgn, addr_t* pgd, addr_t* p4d, addr_t* pud, addr_t* pmd, addr_t* pt);
+static addr_t *get_pte(struct mm_struct *mm, addr_t pgn, int alloc);
 int pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn);
 int pte_set_swap(struct pcb_t *caller, addr_t pgn, int swptyp, addr_t swpoff);
 uint32_t pte_get_entry(struct pcb_t *caller, addr_t pgn);
@@ -160,6 +163,7 @@ int get_free_vmrg_area(struct pcb_t *caller, int vmaid, int size, struct vm_rg_s
 int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz);
 int find_victim_page(struct mm_struct* mm, addr_t *pgn);
 struct vm_area_struct *get_vma_by_num(struct mm_struct *mm, int vmaid);
+struct vm_rg_struct *get_vm_area_node_at_brk(struct pcb_t *caller, int vmaid, addr_t size, addr_t alignedsz);
 
 /* MEM/PHY protypes */
 int MEMPHY_get_freefp(struct memphy_struct *mp, addr_t *fpn);
@@ -173,7 +177,6 @@ int init_memphy(struct memphy_struct *mp, addr_t max_size, int randomflg);
 int print_list_fp(struct framephy_struct *fp);
 int print_list_rg(struct vm_rg_struct *rg);
 int print_list_vma(struct vm_area_struct *rg);
-
 
 int print_list_pgn(struct pgn_t *ip);
 int print_pgtbl(struct pcb_t *ip, addr_t start, addr_t end);
