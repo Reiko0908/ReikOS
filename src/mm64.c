@@ -27,7 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#if defined(MM64)
+// #if defined(MM64)
 
 /* =========================================================================
  * init_pte - initialise a PTE entry value in place
@@ -147,15 +147,11 @@ static addr_t *get_pte(struct mm_struct *mm, addr_t pgn, int alloc)
 int pte_set_swap(struct pcb_t *caller, addr_t pgn, int swptyp, addr_t swpoff) 
 {
   struct mm_struct *mm = caller->mm;
-  addr_t *pte;
-#ifdef MM64
-  pte = get_pte(mm, pgn, 1);
+  addr_t *pte = get_pte(mm, pgn, 1);
   if (!pte) return -1;
-#else
-  pte = &mm->pgd[pgn];
-#endif
-  CLRBIT(*pte, PAGING_PTE_PRESENT_MASK);  /* NOT in RAM */
-  SETBIT(*pte, PAGING_PTE_SWAPPED_MASK);  /* IS on swap */
+
+  CLRBIT(*pte, PAGING_PTE_PRESENT_MASK);
+  SETBIT(*pte, PAGING_PTE_SWAPPED_MASK);
   SETVAL(*pte, swptyp, PAGING_PTE_SWPTYP_MASK, PAGING_PTE_SWPTYP_LOBIT);
   SETVAL(*pte, swpoff, PAGING_PTE_SWPOFF_MASK, PAGING_PTE_SWPOFF_LOBIT);
   return 0;
@@ -168,13 +164,8 @@ int pte_set_swap(struct pcb_t *caller, addr_t pgn, int swptyp, addr_t swpoff)
 int pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn)
 {
   struct mm_struct *mm = caller->mm;
-  addr_t *pte;
-#ifdef MM64
-  pte = get_pte(mm, pgn, 1);
+  addr_t *pte = get_pte(mm, pgn, 1);
   if (!pte) return -1;
-#else
-  pte = &mm->pgd[pgn];
-#endif
   SETBIT(*pte, PAGING_PTE_PRESENT_MASK);  /* IS in RAM */
   CLRBIT(*pte, PAGING_PTE_SWAPPED_MASK);  /* NOT on swap */
   SETVAL(*pte, fpn, PAGING_PTE_FPN_MASK, PAGING_PTE_FPN_LOBIT);
@@ -183,21 +174,15 @@ int pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn)
 
 /* =========================================================================
  * pte_get_entry - read the full PTE value for a page number
- *
  * Returns 0 if the page has never been mapped (no path in the tree).
- * Returns addr_t (64-bit) to avoid truncating large FPN or swap offsets.
  * ========================================================================= */
 uint32_t pte_get_entry(struct pcb_t *caller, addr_t pgn)
 {
   struct mm_struct *mm = caller->mm;
-  addr_t *pte;
-#ifdef MM64
-  pte = get_pte(mm, pgn, 0);
+  addr_t *pte = get_pte(mm, pgn, 0);
   if (pte == NULL) return 0;
   return (uint32_t)(*pte);
-#else
-  return (uint32_t)mm->pgd[pgn]);
-#endif
+
 }
 
 /* =========================================================================
@@ -206,13 +191,9 @@ uint32_t pte_get_entry(struct pcb_t *caller, addr_t pgn)
 int pte_set_entry(struct pcb_t *caller, addr_t pgn, uint32_t pte_val)
 {
   struct mm_struct *mm = caller->mm;
-#ifdef MM64
   addr_t *pte = get_pte(mm, pgn, 1);
   if (!pte) return -1;
   *pte = pte_val;
-#else
-  mm->pgd[pgn] = (uint32_t)pte_val;
-#endif
   return 0;
 }
 
@@ -311,7 +292,6 @@ addr_t alloc_pages_range(struct pcb_t *caller, int req_pgnum,
  * ========================================================================= */
 addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
                   addr_t mapstart, int incpgnum, struct vm_rg_struct *ret_rg) {
-  struct framephy_struct *frm_lst = NULL;
   /*@bksysnet: author provides a feasible solution of getting frames
    *FATAL logic in here, wrong behaviour if we have not enough page
    *i.e. we request 1000 frames meanwhile our RAM has size of 3 frames
@@ -319,6 +299,7 @@ addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
    *in endless procedure of swap-off to get frame and we have not provide
    *duplicate control mechanism, keep it simple
    */
+  struct framephy_struct *frm_lst = NULL;
   addr_t ret_alloc = 0;
   ret_alloc = alloc_pages_range(caller, incpgnum, &frm_lst);
   if (ret_alloc < 0) return -1;
@@ -330,7 +311,8 @@ addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
  * __swap_cp_page - copy one full page of data between two memphy devices
  * ========================================================================= */
 int __swap_cp_page(struct memphy_struct *mpsrc, addr_t srcfpn,
-                   struct memphy_struct *mpdst, addr_t dstfpn) {
+                   struct memphy_struct *mpdst, addr_t dstfpn) 
+{
   int cellidx;
   addr_t addrsrc, addrdst;
   for (cellidx = 0; cellidx < PAGING_PAGESZ; cellidx++) {
