@@ -80,12 +80,12 @@ int validate_overlap_vm_area(struct pcb_t *caller, int vmaid, addr_t vmastart, a
   /* TODO validate the planned memory area is not overlapped */
   if (vmastart >= vmaend) return -1;
 
-  struct vm_area_struct *vma = caller->mm->mmap;
+  struct vm_area_struct *vma = caller->krnl->mm->mmap;
   if (vma == NULL) return -1;
 
   /* TODO validate the planned memory area is not overlapped */
 
-  struct vm_area_struct *cur_area = get_vma_by_num(caller->mm, vmaid);
+  struct vm_area_struct *cur_area = get_vma_by_num(caller->krnl->mm, vmaid);
   if (cur_area == NULL) return -1;
 
   while (vma != NULL)
@@ -106,18 +106,13 @@ int validate_overlap_vm_area(struct pcb_t *caller, int vmaid, addr_t vmastart, a
  */
 int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz)
 {
-  addr_t inc_amt;
-  int inc_pgn;
-#ifdef MM64
-  inc_amt = PAGING64_PAGE_ALIGNSZ(inc_sz);
-  inc_pgn = (int)(inc_amt >> PAGING64_ADDR_PT_SHIFT);
-#else
-  inc_amt = PAGING_PAGE_ALIGNSZ(inc_sz);
-  inc_pgn = (int)(inc_amt >> PAGING_ADDR_PT_SHIFT);
-#endif
+  addr_t inc_amt = PAGING_PAGE_ALIGNSZ(inc_sz);
+  int inc_pgn = (int)(inc_amt >> PAGING_ADDR_PT_SHIFT);
+  
+  struct krnl_t *krnl = caller->krnl;
   struct vm_rg_struct *area = get_vm_area_node_at_brk(caller, vmaid, inc_sz, inc_amt);
   if (!area) return -1;
-  struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
+  struct vm_area_struct *cur_vma = get_vma_by_num(krnl->mm, vmaid);
   if (!cur_vma) {
     free(area);
     return -1;
@@ -145,7 +140,7 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz)
     free_rg->rg_start = newrg.rg_start;
     free_rg->rg_end   = newrg.rg_end;
     free_rg->rg_next  = NULL;
-    enlist_vm_freerg_list(caller->mm, free_rg);
+    enlist_vm_freerg_list(krnl->mm, free_rg);
   }
   free(area);
   return 0;
@@ -171,20 +166,16 @@ addr_t vm_map_kernel(struct pcb_t *caller, addr_t astart, addr_t aend,
                     addr_t mapstart, int incpgnum, struct vm_rg_struct *ret_rg)
 {
   if (!caller || !caller->krnl || !ret_rg) return -1;
+  struct krnl_t *krnl = caller->krnl;
+  if (!krnl->mram || !krnl->mm) return -1;
   if (incpgnum <= 0 || astart >= aend) return -1;
+
   addr_t mapz = (addr_t)incpgnum << PAGING64_ADDR_PT_SHIFT;
   if (mapstart < astart || mapstart + mapz > aend) return -1;
-
-  struct krnl_t *krnl = caller->krnl;
-  if (!caller->mm || !krnl->mram || !krnl->mm) return -1;
   struct framephy_struct *frm_lst = NULL;
-  if (MEMPHY_get_contiguous_freefp(krnl->mram, incpgnum, &frm_lst) != 0) 
-    return -1;
+  if (MEMPHY_get_contiguous_freefp(krnl->mram, incpgnum, &frm_lst) != 0) return -1;
 
-  struct mm_struct *saved_mm = caller->mm;
-  caller->mm = krnl->mm;
   int ret = vm_map_range(caller, astart, aend, mapstart, incpgnum, ret_rg);
-  caller->mm = saved_mm;
   if (ret < 0) {
     struct framephy_struct *fp = frm_lst;
     while (fp) {
