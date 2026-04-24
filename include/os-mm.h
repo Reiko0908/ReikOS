@@ -45,38 +45,42 @@ typedef ADDR_TYPE addr_t;
 #endif
 
 struct pgn_t{
-   addr_t pgn;
-   struct pgn_t *pg_next; 
+  addr_t pgn;
+  struct pgn_t *pg_next; 
 };
 
 /*
  *  Memory region struct
  */
 struct vm_rg_struct {
-   int vmaid;
+  int vmaid;
+  addr_t rg_start;
+  addr_t rg_end;
 
-   addr_t rg_start;
-   addr_t rg_end;
-
-   struct vm_rg_struct *rg_next;
+  /* Priviledged mode bit
+  * usermode - mode bit = 1
+  * kernelmode - mode bit = 0
+  */
+  unsigned int mode_bit;
+  struct vm_rg_struct *rg_next;
 };
 
 /*
  *  Memory area struct
  */
 struct vm_area_struct {
-   unsigned long vm_id;
-   addr_t vm_start;
-   addr_t vm_end;
+  unsigned long vm_id;
+  addr_t vm_start;
+  addr_t vm_end;
 
-   addr_t sbrk;
-/*
+  addr_t sbrk;
+  /*
  * Derived field
  * unsigned long vm_limit = vm_end - vm_start
  */
-   struct mm_struct *vm_mm;
-   struct vm_rg_struct *vm_freerg_list;
-   struct vm_area_struct *vm_next;
+  struct mm_struct *vm_mm;
+  struct vm_rg_struct *vm_freerg_list;
+  struct vm_area_struct *vm_next;
 };
 
 
@@ -84,13 +88,13 @@ struct vm_area_struct {
  * Kernel cache pool struct
  */
 struct kcache_pool_struct {
-   int size;
-   int align;
+  int size;
+  int align;
 
 #ifdef MM64
-   addr_t storage;
+  addr_t storage;
 #else
-   uint32_t storage;
+  uint32_t storage;
 #endif
 };
 
@@ -100,25 +104,25 @@ struct kcache_pool_struct {
  */
 struct mm_struct {
 #ifdef MM64
-   addr_t *pgd;
-   addr_t *p4d;
-   addr_t *pud;
-   addr_t *pmd;
-   addr_t *pt;
+  addr_t *pgd;
+  addr_t *p4d;
+  addr_t *pud;
+  addr_t *pmd;
+  addr_t *pt;
 #else
-   uint32_t *pgd;
+  uint32_t *pgd;
 #endif
 
-   struct vm_area_struct *mmap;
+  struct vm_area_struct *mmap;
 
-   /* Currently we support a fixed number of symbol */
-   struct vm_rg_struct symrgtbl[PAGING_MAX_SYMTBL_SZ];
+  /* Currently we support a fixed number of symbol */
+  struct vm_rg_struct symrgtbl[PAGING_MAX_SYMTBL_SZ];
 
-   /* list of free page */
-   struct pgn_t *fifo_pgn;
+  /* list of free page */
+  struct pgn_t *fifo_pgn;
 
-   /* kmem cache pool */
-   struct kcache_pool_struct *kcpooltbl;
+  /* kmem cache pool */
+  struct kcache_pool_struct *kcpooltbl;
 
 };
 
@@ -127,25 +131,25 @@ struct mm_struct {
  * FRAME/MEM PHY struct
  */
 struct framephy_struct { 
-   addr_t fpn;
-   struct framephy_struct *fp_next;
+  addr_t fpn;
+  struct framephy_struct *fp_next;
 
-   /* Resereed for tracking allocated framed */
-   struct mm_struct* owner;
+  /* Resereed for tracking allocated framed */
+  struct mm_struct* owner;
 };
 
 struct memphy_struct {
-   /* Basic field of data and size */
-   BYTE *storage;
-   int maxsz;
-   
-   /* Sequential device fields */ 
-   int rdmflg;
-   int cursor;
+  /* Basic field of data and size */
+  BYTE *storage;
+  int maxsz;
 
-   /* Management structure */
-   struct framephy_struct *free_fp_list;
-   struct framephy_struct *used_fp_list;
+  /* Sequential device fields */ 
+  int rdmflg;
+  int cursor;
+
+  /* Management structure */
+  struct framephy_struct *free_fp_list;
+  struct framephy_struct *used_fp_list;
 };
 
 #endif
