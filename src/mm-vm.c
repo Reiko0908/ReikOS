@@ -57,7 +57,7 @@ struct vm_rg_struct *get_vm_area_node_at_brk(struct pcb_t *caller, int vmaid, ad
   /* TODO retrive current vma to obtain newrg, current comment out due to compiler redundant warning*/
   /* TODO: update the newrg boundary */
 
-  struct vm_area_struct *cur_vma = get_vma_by_num(caller->krnl->mm, vmaid);
+  struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
 
   newrg = malloc(sizeof(struct vm_rg_struct));
   newrg->rg_start = cur_vma->sbrk;
@@ -176,7 +176,7 @@ addr_t vm_map_kernel(struct pcb_t *caller, addr_t astart, addr_t aend,
   if (mapstart < astart || mapstart + mapz > aend) return -1;
 
   struct krnl_t *krnl = caller->krnl;
-  if (!caller->mm || !krnl->mram || !krnl->mm) return -1;
+  if (!krnl->mram) return -1;
   struct framephy_struct *frm_lst = NULL;
   if (MEMPHY_get_contiguous_freefp(krnl->mram, incpgnum, &frm_lst) != 0) 
     return -1;

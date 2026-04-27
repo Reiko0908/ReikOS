@@ -99,6 +99,12 @@
 #define INCLUDE(x1,x2,y1,y2) (0)
 #define OVERLAP(x1,x2,y1,y2) (0)
 
+#define MASKING_USR_KRNL_BITS(x) ((x) >> 57)
+#define IS_USER_SPACE(x) ((MASKING_USR_KRNL_BITS(x)) == 0x00)
+#define IS_KRNL_SPACE(x)    ((MASKING_USR_KRNL_BITS(x)) == 0x7F)
+#define USERMODEBIT(x) ((x) == 1)
+#define KERNELMODEBIT(x) ((x) == 0)
+
 /* VM region prototypes */
 struct vm_rg_struct * init_vm_rg(addr_t rg_start, addr_t rg_end);
 int enlist_vm_rg_node(struct vm_rg_struct **rglist, struct vm_rg_struct* rgnode);

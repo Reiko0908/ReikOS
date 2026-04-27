@@ -167,12 +167,11 @@ int __free(struct pcb_t *caller, int vmaid, int rgid) {
 int liballoc(struct pcb_t *proc, addr_t size, uint32_t reg_index) {
   addr_t addr;
   int val = __alloc(proc, 0, reg_index, size, &addr);
-  if (val == -1)
-    return -1;
+  if (val == -1) return -1;
   proc->regs[reg_index] = addr;
 #ifdef IODUMP
-  printf("\n[LIBALLOC] PID %d: aloc [%lu] [%u]\n", proc->pid, size, reg_index);
-  printf("Virtual Address: " FORMAT_ADDR "\n", addr);
+  printf("[LIBALLOC] PID %d: alloc [" FORMAT_ADDR "] [%u]\n", proc->pid, size, reg_index);
+#endif
 #ifdef PAGETBL_DUMP
   print_pgtbl(proc, 0, -1); // print max TBL
 #endif
@@ -194,7 +193,7 @@ int libfree(struct pcb_t *proc, uint32_t reg_index) {
     return -1;
   printf("%s:%d\n", __func__, __LINE__);
 #ifdef IODUMP
-  printf("\n[LIBFREE] PID %d [%u]\n", proc->pid, reg_index);
+  printf("[LIBFREE] PID %d: free [%u]\n", proc->pid, reg_index);
 #ifdef PAGETBL_DUMP
   print_pgtbl(proc, 0, -1); // print max TBL
 #endif
@@ -210,9 +209,7 @@ int libfree(struct pcb_t *proc, uint32_t reg_index) {
  *
  */
 int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller) {
-
   uint32_t pte = pte_get_entry(caller, pgn);
-
   if (!PAGING_PAGE_PRESENT(pte)) {
     addr_t vicpgn, vicfpn, swpfpn;
     if (find_victim_page(caller->mm, &vicpgn) != 0)
@@ -227,25 +224,20 @@ int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller) {
      * SYSCALL 1 sys_memmap
      */
 
-    /* 1. swap victim: RAM → SWAP */
     regs.a1 = SYSMEM_SWP_OP;
     regs.a2 = vicfpn;
     regs.a3 = swpfpn;
-
-    if (_syscall(caller->krnl, caller->pid, 17, &regs) != 0)
-      return -1;
+    _syscall(caller->krnl, caller->pid, 17, &regs)
+    pte_set_swap(caller, vicpgn, caller->krnl->active_mswp_id, swpfpn);
 
     /* 2. nếu target ở SWAP → swap-in */
     if (pte & PAGING_PTE_SWAPPED_MASK) {
       addr_t tgtfpn = PAGING_SWP(pte);
       regs.a2 = tgtfpn;
       regs.a3 = vicfpn;
-      if (_syscall(caller->krnl, caller->pid, 17, &regs) != 0)
-        return -1;
+      _syscall(caller->krnl, caller->pid, 17, &regs);
       MEMPHY_put_freefp(caller->krnl->active_mswp, tgtfpn);
     }
-
-    pte_set_swap(caller, vicpgn, caller->krnl->active_mswp_id, swpfpn);
     pte_set_fpn(caller, pgn, vicfpn);
     enlist_pgn_node(&mm->fifo_pgn, pgn);
   }
@@ -264,10 +256,7 @@ int pg_getval(struct mm_struct *mm, int addr, BYTE *data,
   int pgn = PAGING_PGN(addr);
   int off = PAGING_OFFST(addr);
   int fpn;
-
-  if (pg_getpage(mm, pgn, &fpn, caller) != 0)
-    return -1; /* invalid page access */
-
+  if (pg_getpage(mm, pgn, &fpn, caller) != 0) return -1;
   int phyaddr = (fpn << PAGING_ADDR_FPN_LOBIT) + off;
 
   /* TODO
@@ -278,9 +267,8 @@ int pg_getval(struct mm_struct *mm, int addr, BYTE *data,
   struct sc_regs regs;
   regs.a1 = SYSMEM_IO_READ;
   regs.a2 = phyaddr;
-  if (_syscall(caller->krnl, caller->pid, 17, &regs) != 0)
-    return -1;
-  *data = regs.a3;
+  _syscall(caller->krnl, caller->pid, 17, &regs);
+  *data = (BYTE)regs.a3;
   return 0;
 }
 
@@ -295,10 +283,7 @@ int pg_setval(struct mm_struct *mm, int addr, BYTE value,
   int pgn = PAGING_PGN(addr);
   int off = PAGING_OFFST(addr);
   int fpn;
-
-  /* Get the page to MEMRAM, swap from MEMSWAP if needed */
-  if (pg_getpage(mm, pgn, &fpn, caller) != 0)
-    return -1; /* invalid page access */
+  if (pg_getpage(mm, pgn, &fpn, caller) != 0) return -1;
   int phyaddr = (fpn << PAGING_ADDR_FPN_LOBIT) + off;
 
   /* TODO
@@ -310,8 +295,7 @@ int pg_setval(struct mm_struct *mm, int addr, BYTE value,
   regs.a1 = SYSMEM_IO_WRITE;
   regs.a2 = phyaddr;
   regs.a3 = value;
-  if (_syscall(caller->krnl, caller->pid, 17, &regs) != 0)
-    return -1;
+  _syscall(caller->krnl, caller->pid, 17, &regs);
   return 0;
 }
 
@@ -325,14 +309,28 @@ int pg_setval(struct mm_struct *mm, int addr, BYTE value,
  */
 int __read(struct pcb_t *caller, int vmaid, int rgid, addr_t offset,
            BYTE *data) {
-  struct vm_rg_struct *currg = get_symrg_byid(caller->krnl->mm, rgid);
-
-  // struct vm_area_struct *cur_vma = get_vma_by_num(caller->krnl->mm, vmaid);
-
-  /* TODO Invalid memory identify */
-
-  pg_getval(caller->krnl->mm, currg->rg_start + offset, data, caller);
-
+  pthread_mutex_lock(&mmvm_lock);
+  struct vm_rg_struct *currg = get_symrg_byid(caller->mm, rgid);
+  struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
+  if (!currg || !cur_vma) {
+    pthread_mutex_unlock(&mmvm_lock);
+    return -1;
+  }
+  if(curr->rg_end <= currg->rg_start) {
+    pthread_mutex_unlock(&mmvm_lock);
+    return -1;
+  }
+  
+  adrd_t addr = currg->rg_start + offset;
+  if(addr < currg->rg_start || addr >= currg->rg_end) {
+    pthread_mutex_unlock(&mmvm_lock);
+    return -1;
+  }
+  if(pg_getval(caller->mm, currg->rg_start + offset, data, caller) != 0) {
+    pthread_mutex_unlock(&mmvm_lock);
+    return -1;
+  }
+  pthread_mutex_unlock(&mmvm_lock);
   return 0;
 }
 
@@ -343,16 +341,16 @@ int libread(struct pcb_t *proc, // Process executing the instruction
             uint32_t *destination) {
   BYTE data;
   printf("%s:%d\n", __func__, __LINE__);
+  if (!IS_USER_SPACE(offset + proc->regs[source])) return -1;
   int val = __read(proc, 0, source, offset, &data);
+  if (val == 0) proc->regs[*destination] = (addr_t)data;
 
-  *destination = data;
 #ifdef IODUMP
-  /* TODO dump IO content (if needed) */
+  printf("[LIBREAD] PID %d: read [%u] [" FORMAT_ADDR "] [%u]\n", proc->pid, source, offset, *destination);
 #ifdef PAGETBL_DUMP
   print_pgtbl(proc, 0, -1); // print max TBL
 #endif
 #endif
-
   return val;
 }
 
@@ -364,21 +362,17 @@ int libread(struct pcb_t *proc, // Process executing the instruction
  *@size: allocated size
  *
  */
-int __write(struct pcb_t *caller, int vmaid, int rgid, addr_t offset,
-            BYTE value) {
+int __write(struct pcb_t *caller, int vmaid, int rgid, addr_t offset, BYTE value) 
+{
   pthread_mutex_lock(&mmvm_lock);
-  struct vm_rg_struct *currg = get_symrg_byid(caller->krnl->mm, rgid);
+  struct vm_rg_struct *currg = get_symrg_byid(caller->mm, rgid);
+  struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
 
-  struct vm_area_struct *cur_vma = get_vma_by_num(caller->krnl->mm, vmaid);
-
-  if (currg == NULL || cur_vma == NULL) /* Invalid memory identify */
-  {
+  if (currg == NULL || cur_vma == NULL) {
     pthread_mutex_unlock(&mmvm_lock);
     return -1;
   }
-
-  pg_setval(caller->krnl->mm, currg->rg_start + offset, value, caller);
-
+  pg_setval(caller->mm, currg->rg_start + offset, value, caller);
   pthread_mutex_unlock(&mmvm_lock);
   return 0;
 }
@@ -388,17 +382,16 @@ int libwrite(struct pcb_t *proc,   // Process executing the instruction
              BYTE data,            // Data to be wrttien into memory
              uint32_t destination, // Index of destination register
              addr_t offset) {
+  addr_t addr = proc->regs[destination] + offset;
+  if (!IS_USER_SPACE(addr)) return -1;
   int val = __write(proc, 0, destination, offset, data);
-  if (val == -1) {
-    return -1;
-  }
+  if (val == -1) return -1;
 #ifdef IODUMP
-  /* TODO dump IO content (if needed) */
+  printf("[LIBWRITE] PID %d: write [%u] [%u] [" FORMAT_ADDR "]\n", proc->pid, data, destination, offset);
 #ifdef PAGETBL_DUMP
   print_pgtbl(proc, 0, -1); // print max TBL
 #endif
 #endif
-
   return val;
 }
 
@@ -412,8 +405,8 @@ int libkmem_malloc(struct pcb_t *caller, uint32_t size, uint32_t reg_index) {
   /* TODO: provide OS level management
    *       and forward the request to helper
    */
-  // addr_t  addr;
-  // int val = __kmalloc(caller, -1, reg_index, size, &addr);
+  addr_t  addr;
+  int val = __kmalloc(caller, -1, reg_index, size, &addr);
 
   /* TODO: provide OS kmem allocation validation
    */
