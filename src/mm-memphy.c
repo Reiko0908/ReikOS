@@ -26,17 +26,14 @@
  */
 int MEMPHY_mv_csr(struct memphy_struct *mp, addr_t offset)
 {
-   int numstep = 0;
-
-   mp->cursor = 0;
-   while (numstep < offset && numstep < mp->maxsz)
-   {
-      /* Traverse sequentially */
-      mp->cursor = (mp->cursor + 1) % mp->maxsz;
-      numstep++;
-   }
-
-   return 0;
+  int numstep = 0;
+  mp->cursor = 0;
+  while (numstep < offset && numstep < mp->maxsz) {
+    /* Traverse sequentially */
+    mp->cursor = (mp->cursor + 1) % mp->maxsz;
+    numstep++;
+  }
+  return 0;
 }
 
 /*
@@ -47,16 +44,12 @@ int MEMPHY_mv_csr(struct memphy_struct *mp, addr_t offset)
  */
 int MEMPHY_seq_read(struct memphy_struct *mp, addr_t addr, BYTE *value)
 {
-   if (mp == NULL)
-      return -1;
+  if (mp == NULL) return -1;
+  if (!mp->rdmflg) return -1; /* Not compatible mode for sequential read */
+  MEMPHY_mv_csr(mp, addr);
+  *value = (BYTE)mp->storage[addr];
 
-   if (!mp->rdmflg)
-      return -1; /* Not compatible mode for sequential read */
-
-   MEMPHY_mv_csr(mp, addr);
-   *value = (BYTE)mp->storage[addr];
-
-   return 0;
+return 0;
 }
 
 /*
@@ -67,14 +60,11 @@ int MEMPHY_seq_read(struct memphy_struct *mp, addr_t addr, BYTE *value)
  */
 int MEMPHY_read(struct memphy_struct *mp, addr_t addr, BYTE *value)
 {
-   if (mp == NULL)
-      return -1;
-
+   if (mp == NULL) return -1;
    if (mp->rdmflg)
       *value = mp->storage[addr];
    else /* Sequential access device */
       return MEMPHY_seq_read(mp, addr, value);
-
    return 0;
 }
 
@@ -168,9 +158,62 @@ int MEMPHY_get_freefp(struct memphy_struct *mp, addr_t *retfpn)
    return 0;
 }
 
+int MEMPHY_get_contiguous_freefp(struct memphy_struct *mp, int req_pgnum, struct framephy_struct **frm_lst)
+{
+  if (!mp || req_pgnum <= 0 || mp->maxsz <= 0) return -1;
+  int fpnum = (mp->maxsz >> PAGING64_ADDR_PT_SHIFT);
+  BYTE *freefp_tbl = (BYTE *)calloc(fpnum, sizeof(BYTE));
+  if (!freefp_tbl) return -1;
+
+  struct *cur = mp->free_fp_list;
+  while (cur) {
+    if (cur->fpn < fpnum) 
+      freefp_tbl[cur->fpn] = 1;
+    cur = cur->fp_next;
+  }
+  
+  int start_fpn = -1, count = 0;
+  for (int i = 0; i < fpnum; i++) {
+    if (freefp_table[i] == 1) {
+      if (count == 0) start_fpn = i;
+      count++;
+      if (count == req_pgnum) break;
+    } else {
+      count = 0;
+      start_fpn = -1;
+    }
+  }
+  free(freefp_tbl);
+  if (count < req_pgnum) return -1;
+  struct framephy_struct **slots = calloc(req_pgnum, sizeof(*slots));
+  if (!slots) return -1;
+  struct framephy_struct *prev = NULL;
+  cur = mp->free_fp_list;
+  int found = 0;
+  while (cur && found < req_pgnum) {
+    struct framephy_struct *next = cur->fp_next;
+    if (cur->fpn >= start_fpn && cur->fpn < start_fpn + req_pgnum) {
+      if (prev) prev->fp_next = next;
+      else mp->free_fp_list = next;
+      int idx = cur->fpn - start_fpn;
+      slots[idx] = cur;
+      found++;
+    } else {
+      prev = cur;
+    }
+    cur = next;
+  }
+  for (int i = 0; i < req_pgnum; i++) {
+    slots[i]->fp_next = slots[i + 1];
+  }
+  slots[req_pgnum - 1]->fp_next = NULL;
+  *frm_lst = slots[0];
+  return 0;
+}
+
 int MEMPHY_dump(struct memphy_struct *mp)
 {
-    if (mp == NULL) return -1;
+    if (!mp || !mp->strorage) return -1;
     for (int i = 0; i < mp->maxsz; i++) {
       printf("%02x ", mp->storage[i]);
       if ((i + 1) % 16 == 0) printf("\n");
