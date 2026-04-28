@@ -50,11 +50,11 @@ int init_pte(addr_t *pte, int pre, /* present */
  */
 int get_pd_from_address(addr_t addr, addr_t *pgd, addr_t *p4d, addr_t *pud,
                         addr_t *pmd, addr_t *pt) {
-  *pgd = (addr & PAGING64_ADDR_PGD_MASK) >> PAGING64_ADDR_PGD_LOBIT;
-  *p4d = (addr & PAGING64_ADDR_P4D_MASK) >> PAGING64_ADDR_P4D_LOBIT;
-  *pud = (addr & PAGING64_ADDR_PUD_MASK) >> PAGING64_ADDR_PUD_LOBIT;
-  *pmd = (addr & PAGING64_ADDR_PMD_MASK) >> PAGING64_ADDR_PMD_LOBIT;
-  *pt = (addr & PAGING64_ADDR_PT_MASK) >> PAGING64_ADDR_PT_LOBIT;
+  *pgd = PAGING64_ADDR_PGD(addr);
+  *p4d = PAGING64_ADDR_P4D(addr);
+  *pud = PAGING64_ADDR_PUD(addr);
+  *pmd = PAGING64_ADDR_PMD(addr);
+  *pt = PAGING64_ADDR_PT(addr);
   return 0;
 }
 
@@ -64,8 +64,7 @@ int get_pd_from_address(addr_t addr, addr_t *pgd, addr_t *p4d, addr_t *pud,
 int get_pd_from_pagenum(addr_t pgn, addr_t *pgd, addr_t *p4d, addr_t *pud,
                         addr_t *pmd, addr_t *pt) {
   /* Shift the address to get page num and perform the mapping*/
-  return get_pd_from_address(pgn << PAGING64_ADDR_PT_SHIFT, pgd, p4d, pud, pmd,
-                             pt);
+  return get_pd_from_address(pgn << PAGING64_ADDR_PT_SHIFT, pgd, p4d, pud, pmd, pt);
 }
 
 /*
@@ -370,14 +369,21 @@ static int __init_mm(struct mm_struct *mm, addr_t *pgd_root, addr_t vm_start_add
   vma0->vm_mm = mm;
   vma0->vm_next = NULL;
 
-  struct vm_rg_struct *init_rg = init_vm_rg(vm_start_addr, vm_start_addr);
-  enlist_vm_freerg_list(vma0->vm_freerg_list, init_rg);
+  struct vm_rg_struct *first_rg = init_vm_rg(vma0->vm_start, vma0->vm_end);
+  if (!init_rg) {
+    free(vma0);
+    return -1;
+  }
+  enlist_vm_freerg_list(&vma0->vm_freerg_list, init_rg);
 
   mm->mmap = vma0;
   mm->fifo_pgn = NULL;
-  memset(mm->symrgtbl, 0, sizeof(mm->symrgtbl));
+  for (int i = 0; i < PAGING_MAX_SYMTBL_SZ; i++) {
+    mm->symrgtbl[i].rg_start = 0;
+    mm->symrgtbl[i].rg_end = 0;
+    mm->symrgtbl[i].rg_next = NULL;
+  }
   return 0;
-  
 }
 
 int init_mm(struct mm_struct *mm, struct pcb_t *caller) {
@@ -388,7 +394,7 @@ int init_mm(struct mm_struct *mm, struct pcb_t *caller) {
 }
 
 int krnl_init_mm(struct mm_struct *mm, struct kernel_struct *krnl) {
-  addr_t start_addr = (1ULL << 63);
+  addr_t start_addr = KRNL_SPACE_BASE_ADDR;
   __init_mm(mm, krnl->krnl_pgd, start_addr);
   mm->kcpooltbl = calloc(100, sizeof(struct kcache_pool_struct));
   return 0;
