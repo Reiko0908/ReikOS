@@ -86,9 +86,6 @@ int __sys_memmap(struct krnl_t *krnl, uint32_t pid, struct sc_regs* regs)
    case SYSMEM_SWP_OP:
             __mm_swap_page(caller, regs->a2, regs->a3);
             break;
-   case SYSMEM_SWP_IN_OP:
-            __mm_swap_in_page(caller, regs->a2, regs->a3);
-            break;
    case SYSMEM_IO_READ:
             MEMPHY_read(caller->krnl->mram, regs->a2, &value);
             regs->a3 = value;
