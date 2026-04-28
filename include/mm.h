@@ -1,4 +1,5 @@
 #include "os-mm.h"
+#include <cstdint>
 #ifndef MM_H
 
 #include "common.h"
@@ -112,10 +113,14 @@ int enlist_pgn_node(struct pgn_t **pgnlist, addr_t pgn);
 int vmap_pgd_memset(struct pcb_t *caller, addr_t addr, int pgnum);
 addr_t vmap_page_range(struct pcb_t *caller, addr_t addr, int pgnum, 
                     struct framephy_struct *frames, struct vm_rg_struct *ret_rg);
+addr_t krnl_vmap_page_range(struct pcb_t *caller, addr_t addr, int pgnum, 
+                    struct framephy_struct *frames, struct vm_rg_struct *ret_rg);
 addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend, addr_t mapstart, int incpgnum, struct vm_rg_struct *ret_rg);
+addr_t krnl_vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend, addr_t mapstart, int incpgnum, struct vm_rg_struct *ret_rg);
 addr_t vm_map_range(struct pcb_t *caller, addr_t astart, addr_t aend, addr_t mapstart, int incpgnum, struct vm_rg_struct *ret_rg);
 addr_t vm_map_kernel(struct pcb_t *caller, addr_t astart, addr_t aend, addr_t mapstart, int incpgnum, struct vm_rg_struct *ret_rg);
 addr_t alloc_pages_range(struct pcb_t *caller, int incpgnum, struct framephy_struct **frm_lst);
+addr_t krnl_alloc_pages_range(struct pcb_t *caller, int incpgnum, struct framephy_struct **frm_lst);
 int __swap_cp_page(struct memphy_struct *mpsrc, addr_t srcfpn,
                 struct memphy_struct *mpdst, addr_t dstfpn) ;
 /* KMEM prototypes */
@@ -132,10 +137,16 @@ int __write_kernel_mem(struct pcb_t *caller, int vmaid, int rgid, addr_t offset,
 int get_pd_from_address(addr_t addr, addr_t* pgd, addr_t* p4d, addr_t* pud, addr_t* pmd, addr_t* pt);
 int get_pd_from_pagenum(addr_t pgn, addr_t* pgd, addr_t* p4d, addr_t* pud, addr_t* pmd, addr_t* pt);
 static addr_t *get_pte(struct mm_struct *mm, addr_t pgn, int alloc);
+static int __pte_set_fpn(addr_t *pgd_root, addr_t pgn, addr_t fpn);
 int pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn);
+int krnl_pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn);
 int pte_set_swap(struct pcb_t *caller, addr_t pgn, int swptyp, addr_t swpoff);
+static uint32_t __pte_get_entry(addr_t *pgd_root, addr_t pgn);
 uint32_t pte_get_entry(struct pcb_t *caller, addr_t pgn);
+uint32_t krnl_pte_get_entry(struct pcb_t *caller, addr_t pgn);
+static int __pte_set_entry(addr_t *pgd_root, addr_t pgn, uint32_t pte_val);
 int pte_set_entry(struct pcb_t *caller, addr_t pgn, uint32_t pte_val);
+int krnl_pte_set_entry(struct pcb_t *caller, addr_t pgn, uint32_t pte_val);
 int init_pte(addr_t *pte,
              int pre,    // present
              addr_t fpn,    // FPN
@@ -147,7 +158,9 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
 int __free(struct pcb_t *caller, int vmaid, int rgid);
 int __read(struct pcb_t *caller, int vmaid, int rgid, addr_t offset, BYTE *data);
 int __write(struct pcb_t *caller, int vmaid, int rgid, addr_t offset, BYTE value);
+static int __init_mm(struct mm_struct *mm, addr_t *pgd_root, addr_t vm_start_addr);
 int init_mm(struct mm_struct *mm, struct pcb_t *caller);
+int krnl_init_mm(struct mm_struct *mm, struct krnl_t *krnl);
 
 /* VM prototypes */
 int pgalloc(struct pcb_t *proc, uint32_t size, uint32_t reg_index);

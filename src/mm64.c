@@ -353,7 +353,7 @@ int __swap_cp_page(struct memphy_struct *mpsrc, addr_t srcfpn,
 /*
  * __init_mm - Initialize the Memory Management structure for a User Process
  */
-static __init_mm(struct mm_struct *mm, addr_t *pgd_root, addr_t vm_start_addr) {
+static int __init_mm(struct mm_struct *mm, addr_t *pgd_root, addr_t vm_start_addr) {
   mm->pgd = pgd_root;
   mm->p4d = NULL;
   mm->pud = NULL;
