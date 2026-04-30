@@ -16,6 +16,8 @@
 #define MM_PAGING
 #define PAGING_MAX_MMSWP 4 /* max number of supported swapped space */
 #define PAGING_MAX_SYMTBL_SZ 30
+#define MAX_CACHE_POOL 100
+#define BUDDY_MAX_ORDER 10
 
 /* 
  * @bksysnet: in long address mode of 64bit or original 32bit
@@ -83,21 +85,41 @@ struct vm_area_struct {
   struct vm_area_struct *vm_next;
 };
 
+/*
+ * Free object struct
+ */
+struct free_obj {
+   addr_t addr;
+   int next;
+};
+
+/*
+ * Kernel slab struct
+ */
+struct slab_struct {
+   addr_t addr;
+   struct free_obj *free_list;
+#ifdef MM64
+   addr_t storage;
+#else
+   uint32_t storage;
+#endif
+   struct slab_struct *next;
+};
 
 /* 
  * Kernel cache pool struct
  */
 struct kcache_pool_struct {
-  int size;
-  int align;
-
+   int size;
+   int align;
+   struct slab_struct *slabs;
 #ifdef MM64
-  addr_t storage;
+   addr_t storage; // index of the first available slot in a slab
 #else
-  uint32_t storage;
+   uint32_t storage;
 #endif
 };
-
 
 /* 
  * Memory management struct
@@ -126,7 +148,6 @@ struct mm_struct {
 
 };
 
-
 /*
  * FRAME/MEM PHY struct
  */
@@ -150,6 +171,20 @@ struct memphy_struct {
   /* Management structure */
   struct framephy_struct *free_fp_list;
   struct framephy_struct *used_fp_list;
+};
+
+/*
+ * Buddy allocator
+ */
+struct buddy_block {
+    int fpn;                    /* start frame number */
+    int order;                  /* block size = 2^order frames */
+    struct buddy_block *next;
+};
+
+struct buddy_system {
+    struct buddy_block *free_lists[BUDDY_MAX_ORDER + 1];
+    int total_frames;
 };
 
 #endif
