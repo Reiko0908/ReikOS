@@ -97,28 +97,20 @@ struct free_obj {
  * Kernel slab struct
  */
 struct slab_struct {
-   addr_t addr;
-   struct free_obj *free_list;
-#ifdef MM64
-   addr_t storage;
-#else
-   uint32_t storage;
-#endif
-   struct slab_struct *next;
+  addr_t addr;
+  struct free_obj *free_list;
+  int free_count;
+  struct slab_struct *next;
 };
 
 /* 
  * Kernel cache pool struct
  */
 struct kcache_pool_struct {
-   int size;
-   int align;
-   struct slab_struct *slabs;
-#ifdef MM64
-   addr_t storage; // index of the first available slot in a slab
-#else
-   uint32_t storage;
-#endif
+  int size;
+  int align;
+  int slab_count;
+  struct slab_struct *slabs;
 };
 
 /* 
@@ -145,7 +137,20 @@ struct mm_struct {
 
   /* kmem cache pool */
   struct kcache_pool_struct *kcpooltbl;
+};
 
+/*
+ * Buddy allocator
+ */
+struct buddy_block {
+    int fpn;                    /* start frame number */
+    int order;                  /* block size = 2^order frames */
+    struct buddy_block *next;
+};
+
+struct buddy_system {
+    struct buddy_block *free_lists[BUDDY_MAX_ORDER + 1];
+    int total_frames;
 };
 
 /*
@@ -171,20 +176,9 @@ struct memphy_struct {
   /* Management structure */
   struct framephy_struct *free_fp_list;
   struct framephy_struct *used_fp_list;
-};
 
-/*
- * Buddy allocator
- */
-struct buddy_block {
-    int fpn;                    /* start frame number */
-    int order;                  /* block size = 2^order frames */
-    struct buddy_block *next;
-};
-
-struct buddy_system {
-    struct buddy_block *free_lists[BUDDY_MAX_ORDER + 1];
-    int total_frames;
+  struct buddy_system buddy;
+  int buddy_initialized;
 };
 
 #endif
