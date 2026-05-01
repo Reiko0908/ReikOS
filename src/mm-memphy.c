@@ -47,6 +47,7 @@ int buddy_init(struct buddy_system *bs, int total_frames) {
     fpn += 1 << order;
     rem -= 1 << order;
   }
+  return 0;
 } 
 
 /*
@@ -132,11 +133,9 @@ int MEMPHY_mv_csr(struct memphy_struct *mp, addr_t offset)
 int MEMPHY_seq_read(struct memphy_struct *mp, addr_t addr, BYTE *value)
 {
   if (mp == NULL) return -1;
-  if (!mp->rdmflg) return -1; /* Not compatible mode for sequential read */
   MEMPHY_mv_csr(mp, addr);
   *value = (BYTE)mp->storage[addr];
-
-return 0;
+  return 0;
 }
 
 /*
@@ -164,8 +163,6 @@ int MEMPHY_read(struct memphy_struct *mp, addr_t addr, BYTE *value)
 int MEMPHY_seq_write(struct memphy_struct *mp, addr_t addr, BYTE value)
 {
   if (mp == NULL) return -1;
-  if (!mp->rdmflg) return -1; /* Not compatible mode for sequential read */
-
   MEMPHY_mv_csr(mp, addr);
   mp->storage[addr] = value;
   return 0;
@@ -235,7 +232,7 @@ int MEMPHY_get_contiguous_freefp(struct memphy_struct *mp, int req_pgnum, addr_t
  */
 int MEMPHY_dump(struct memphy_struct *mp)
 {
-  if (!mp || !mp->strorage) return -1;
+  if (!mp || !mp->storage) return -1;
   for (int i = 0; i < mp->maxsz; i++) {
     printf("%02x ", mp->storage[i]);
     if ((i + 1) % 16 == 0) printf("\n");
@@ -250,7 +247,7 @@ int MEMPHY_dump(struct memphy_struct *mp)
 int MEMPHY_put_freefp(struct memphy_struct *mp, addr_t fpn)
 {
   if (!mp || !mp->buddy_initialized) return -1;
-  return buddy_free(&mp->buddy, (int)fpn, 0);
+  return buddy_free(&mp->buddy, 0, (int)fpn);
 }
 
 /*
@@ -258,10 +255,10 @@ int MEMPHY_put_freefp(struct memphy_struct *mp, addr_t fpn)
  */
 int MEMPHY_put_contiguous_freefp(struct memphy_struct *mp, addr_t fpn, int req_pgnum)
 {
-    if (!mp || !mp->buddy_initialized || req_pgnum <= 0) return -1;
-    int order = 0;
-    while ((1 << order) < req_pgnum) order++;
-    return buddy_free(&mp->buddy, (int)fpn, order);
+  if (!mp || !mp->buddy_initialized || req_pgnum <= 0) return -1;
+  int order = 0;
+  while ((1 << order) < req_pgnum) order++;
+  return buddy_free(&mp->buddy, order, (int)fpn);
 }
 
 /*
@@ -276,7 +273,7 @@ int init_memphy(struct memphy_struct *mp, addr_t max_size, int randomflg)
   if (!mp->rdmflg) /* Not Ramdom acess device, then it serial device*/
     mp->cursor = 0;
   mp->buddy_initialized = 0;
-  if (MEMPHY_format(mp, PAGING_PAGESZ) != 0) {
+  if (MEMPHY_format(mp, PAGING64_PAGESZ) != 0) {
     free(mp->storage);
     mp->storage = NULL;
     return -1;
