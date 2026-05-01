@@ -14,14 +14,15 @@
  * Memory physical module mm/mm-memphy.c
  */
 
-#include "mm.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "../include/mm.h"
+#include "../include/mm64.h"
+
 /* =======================================================================
  * Buddy Allocator
  * ======================================================================= */
-
 /*
  * buddy_init - partition [0, total_frames) into naturally-aligned
  * power-of-two blocks and insert each into the matching free list.

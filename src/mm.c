@@ -13,7 +13,7 @@
   *        backward compatible feature or PAE feature 
   */
  
-#include "mm.h"
+#include "../include/mm.h"
 #include <stdlib.h>
 #include <stdio.h>
 

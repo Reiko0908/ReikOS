@@ -173,10 +173,6 @@ struct memphy_struct {
   int rdmflg;
   int cursor;
 
-  /* Management structure */
-  struct framephy_struct *free_fp_list;
-  struct framephy_struct *used_fp_list;
-
   struct buddy_system buddy;
   int buddy_initialized;
 };

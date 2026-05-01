@@ -1,5 +1,5 @@
 #include "os-mm.h"
-#include <cstdint>
+#include <stdint.h>
 #ifndef MM_H
 
 #include "common.h"
@@ -116,7 +116,8 @@ addr_t vm_map_kernel(struct pcb_t *caller, addr_t astart, addr_t aend, addr_t ma
 addr_t alloc_pages_range(struct pcb_t *caller, int incpgnum, struct framephy_struct **frm_lst);
 addr_t krnl_alloc_pages_range(struct pcb_t *caller, int incpgnum, struct framephy_struct **frm_lst);
 int __swap_cp_page(struct memphy_struct *mpsrc, addr_t srcfpn,
-                struct memphy_struct *mpdst, addr_t dstfpn) ;
+                struct memphy_struct *mpdst, addr_t dstfpn);
+
 /* KMEM prototypes */
 addr_t __kmalloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *alloc_addr);
 addr_t __kmem_cache_alloc(struct pcb_t *caller, int vmaid, int rgid, int cache_pool_id, addr_t *alloc_addr);
@@ -130,7 +131,7 @@ int __write_kernel_mem(struct pcb_t *caller, int vmaid, int rgid, addr_t offset,
 /* Page directory prototypes */
 int get_pd_from_address(addr_t addr, addr_t* pgd, addr_t* p4d, addr_t* pud, addr_t* pmd, addr_t* pt);
 int get_pd_from_pagenum(addr_t pgn, addr_t* pgd, addr_t* p4d, addr_t* pud, addr_t* pmd, addr_t* pt);
-static addr_t *get_pte(struct mm_struct *mm, addr_t pgn, int alloc);
+static addr_t *get_pte(addr_t *pgd_root, addr_t pgn, int alloc);
 static int __pte_set_fpn(addr_t *pgd_root, addr_t pgn, addr_t fpn);
 int pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn);
 int krnl_pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn);
@@ -152,7 +153,7 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
 int __free(struct pcb_t *caller, int vmaid, int rgid);
 int __read(struct pcb_t *caller, int vmaid, int rgid, addr_t offset, BYTE *data);
 int __write(struct pcb_t *caller, int vmaid, int rgid, addr_t offset, BYTE value);
-static int __init_mm(struct mm_struct *mm, addr_t *pgd_root, addr_t vm_start_addr);
+static int __init_mm(struct mm_struct *mm, addr_t *pgd_root, addr_t vm_base_addr);
 int init_mm(struct mm_struct *mm, struct pcb_t *caller);
 int krnl_init_mm(struct mm_struct *mm, struct krnl_t *krnl);
 
@@ -169,6 +170,7 @@ int pgwrite(
 		BYTE data, // Data to be wrttien into memory
 		uint32_t destination, // Index of destination register
 		addr_t offset);
+
 /* Local VM prototypes */
 struct vm_rg_struct * get_symrg_byid(struct mm_struct* mm, int rgid);
 int validate_overlap_vm_area(struct pcb_t *caller, int vmaid, addr_t vmastart, addr_t vmaend);
@@ -177,12 +179,22 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz);
 int find_victim_page(struct mm_struct* mm, addr_t *pgn);
 struct vm_area_struct *get_vma_by_num(struct mm_struct *mm, int vmaid);
 struct vm_rg_struct *get_vm_area_node_at_brk(struct pcb_t *caller, int vmaid, addr_t size, addr_t alignedsz);
+int vm_lookup_rgid (struct mm_struct *mm, addr_t addr);
+int vm_lookup_vmaid (struct mm_struct *mm, addr_t addr);
+
+/* Buddy allocator prototypes */
+int buddy_init(struct buddy_system *bs, int total_frames);
+int buddy_alloc(struct buddy_system *bs, int order, int *fpn);
+int buddy_free(struct buddy_system *bs, int order, int fpn);
 
 /* MEM/PHY protypes */
 int MEMPHY_get_freefp(struct memphy_struct *mp, addr_t *fpn);
+int MEMPHY_get_contiguous_freefp(struct memphy_struct *mp, int req_pgnum, addr_t *retfpn);
 int MEMPHY_put_freefp(struct memphy_struct *mp, addr_t fpn);
+int MEMPHY_put_contiguous_freefp(struct memphy_struct *mp, addr_t fpn, int req_pgnum);
 int MEMPHY_read(struct memphy_struct * mp, addr_t addr, BYTE *value);
 int MEMPHY_write(struct memphy_struct * mp, addr_t addr, BYTE data);
+int MEMPHY_format(struct memphy_struct *mp, int pagesz);
 int MEMPHY_dump(struct memphy_struct * mp);
 int init_memphy(struct memphy_struct *mp, addr_t max_size, int randomflg);
 

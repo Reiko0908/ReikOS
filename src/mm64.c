@@ -7,13 +7,13 @@
  * personal permission to use and modify the Licensed Source Code
  * for the sole purpose of studying while attending the course CO2018.
  */
-#include "mm64.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-// #if defined(MM64)
+#include "../include/mm64.h"
 
+#if defined(MM64)
 /*
  * init_pte - Initialize a Page Table Entry (PTE) with specific flags and values
  */
@@ -195,19 +195,20 @@ int krnl_pte_set_entry(struct pcb_t *caller, addr_t pgn, uint32_t pte_val) {
 }
 
 /*
- * vmap_pgd_memset - Initialize a range of page table entries with a specific
- * pattern
+ * vmap_pgd_memset - Initialize a range of page table entries with a specific pattern
  */
-int vmap_pgd_memset(struct pcb_t *caller, addr_t addr, int pgnum) {
-  struct mm_struct *mm = caller->mm;
-  addr_t pattern = 0xdeadbeef;
-  for (int pgit = 0; pgit < pgnum; pgit++) {
+int vmap_pgd_memset(struct pcb_t *caller, addr_t addr, int pgnum)
+{
+	uint32_t pattern = 0xdeadbeef;
+	if (caller == NULL || caller->mm == NULL || caller->mm->pgd == NULL)
+		return -1;
+
+	for (int pgit = 0; pgit < pgnum; pgit++) {
     addr_t pgn = PAGING64_PGN(addr + (pgit << PAGING64_ADDR_PT_SHIFT));
-    addr_t *pte = get_pte(mm, pgn, 1);
-    if (pte != NULL)
-      *pte = (pattern & PAGING_PTE_FPN_MASK) | PAGING_PTE_PRESENT_MASK;
-  }
-  return 0;
+		addr_t *pte = get_pte(caller->mm->pgd, pgn, 1);
+		if (pte) *pte = pattern;
+	}
+	return 0;
 }
 
 /*
@@ -251,7 +252,7 @@ addr_t alloc_pages_range(struct pcb_t *caller, int req_pgnum,
   struct framephy_struct *newfp = NULL;
   struct framephy_struct *tail = NULL;
   *frm_lst = NULL;
-  int max_ram_frames = (caller->krnl->mram->max_size) >> PAGING64_ADDR_PT_SHIFT;
+  int max_ram_frames = (caller->krnl->mram->maxsz) >> PAGING64_ADDR_PT_SHIFT;
   if (req_pgnum > max_ram_frames) return -3000;
 
   for (int pgit = 0; pgit < req_pgnum; pgit++) {
@@ -284,9 +285,34 @@ addr_t alloc_pages_range(struct pcb_t *caller, int req_pgnum,
 }
 
 addr_t krnl_alloc_pages_range(struct pcb_t *caller, int req_pgnum,
-                             struct framephy_struct **frm_lst) {
+                               struct framephy_struct **frm_lst)
+{
   if (!caller || !caller->krnl || !caller->krnl->mram) return -1;
-  return MEMPHY_get_contiguous_freefp(caller->krnl->mram, req_pgnum, frm_lst);
+  addr_t base_fpn;
+  if (MEMPHY_get_contiguous_freefp(caller->krnl->mram, req_pgnum, &base_fpn) != 0)
+    return -1;
+
+  struct framephy_struct *head = NULL;
+  struct framephy_struct *tail = NULL;
+  for (int i = 0; i < req_pgnum; i++) {
+    struct framephy_struct *node = malloc(sizeof(struct framephy_struct));
+    if (!node) {
+      MEMPHY_put_contiguous_freefp(caller->krnl->mram, base_fpn, req_pgnum);
+      while (head) {
+        struct framephy_struct *nx = head->fp_next;
+        free(head);
+        head = nx;
+      }
+      return -1;
+    }
+    node->fpn = base_fpn + i;
+    node->fp_next = NULL;
+    node->owner   = caller->krnl->mm;
+    if (!head) { head = node; tail = node; }
+    else {tail->fp_next = node; tail = node; }
+  }
+  *frm_lst = head;
+  return 0;
 }
 
 /*
@@ -314,10 +340,10 @@ addr_t krnl_vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
   if (!caller || !caller->krnl || !caller->krnl->mram) return -1;
   struct framephy_struct *frm_lst = NULL;
   addr_t ret_alloc = krnl_alloc_pages_range(caller, incpgnum, &frm_lst);
-  if (ret_alloc != 0 || frmlst == NULL) return -1;
+  if (ret_alloc != 0 || frm_lst == NULL) return -1;
 
-	if (k_vmap_page_range(caller, mapstart, incpgnum, frmlst, ret_rg) < 0) {
-		struct framephy_struct *fpit = frmlst;
+	if (krnl_vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg) < 0) {
+		struct framephy_struct *fpit = frm_lst;
 		while (fpit != NULL) {
 			struct framephy_struct *next = fpit->fp_next;
 			MEMPHY_put_freefp(caller->krnl->mram, fpit->fpn);
@@ -352,7 +378,7 @@ int __swap_cp_page(struct memphy_struct *mpsrc, addr_t srcfpn,
 /*
  * __init_mm - Initialize the Memory Management structure for a User Process
  */
-static int __init_mm(struct mm_struct *mm, addr_t *pgd_root, addr_t vm_start_addr) {
+static int __init_mm(struct mm_struct *mm, addr_t *pgd_root, addr_t vm_base_addr) {
   mm->pgd = pgd_root;
   mm->p4d = NULL;
   mm->pud = NULL;
@@ -362,19 +388,19 @@ static int __init_mm(struct mm_struct *mm, addr_t *pgd_root, addr_t vm_start_add
   struct vm_area_struct *vma0 = malloc(sizeof(struct vm_area_struct));
   if (!vma0) return -1;
   vma0->vm_id = 0;
-  vma0->vm_start = vm_start_addr;
+  vma0->vm_start = vm_base_addr;
   vma0->vm_end = vma0->vm_start;
   vma0->sbrk = vma0->vm_start;
   vma0->vm_freerg_list = NULL;
   vma0->vm_mm = mm;
   vma0->vm_next = NULL;
 
-  struct vm_rg_struct *first_rg = init_vm_rg(vma0->vm_start, vma0->vm_end);
+  struct vm_rg_struct *init_rg = init_vm_rg(vma0->vm_start, vma0->vm_end);
   if (!init_rg) {
     free(vma0);
     return -1;
   }
-  enlist_vm_freerg_list(&vma0->vm_freerg_list, init_rg);
+  enlist_vm_rg_node(&vma0->vm_freerg_list, init_rg);
 
   mm->mmap = vma0;
   mm->fifo_pgn = NULL;
@@ -389,14 +415,15 @@ static int __init_mm(struct mm_struct *mm, addr_t *pgd_root, addr_t vm_start_add
 int init_mm(struct mm_struct *mm, struct pcb_t *caller) {
   addr_t *pgd_root = (addr_t *)calloc(512, sizeof(addr_t));
   __init_mm(mm, pgd_root, 0);
-  mm->symrgtbl = NULL;
+  mm->kcpooltbl = NULL;
   return 0;
 }
 
-int krnl_init_mm(struct mm_struct *mm, struct kernel_struct *krnl) {
-  addr_t start_addr = KRNL_SPACE_BASE_ADDR;
-  __init_mm(mm, krnl->krnl_pgd, start_addr);
-  mm->kcpooltbl = calloc(100, sizeof(struct kcache_pool_struct));
+int krnl_init_mm(struct mm_struct *mm, struct krnl_t *krnl) {
+  addr_t base_addr = KRNL_SPACE_BASE_ADDR;
+  __init_mm(mm, krnl->krnl_pgd, base_addr);
+  mm->kcpooltbl = calloc(MAX_CACHE_POOL, sizeof(struct kcache_pool_struct));
+  if (!mm->kcpooltbl) return -1;
   return 0;
 }
 
@@ -453,7 +480,7 @@ int print_list_fp(struct framephy_struct *ifp) {
   printf("\n");
   return 0;
 }
-how to foot sweep
+
 /*
  * print_list_rg - Print a linked list of virtual memory regions
  */
@@ -527,7 +554,7 @@ int print_pgtbl(struct pcb_t *caller, addr_t start, addr_t end) {
   printf("Page table dump [pgn %lu .. %lu]:\n", (unsigned long)pgn_start,
          (unsigned long)pgn_end);
   for (addr_t pgn = pgn_start; pgn < pgn_end; ++pgn) {
-    addr_t *pte_ptr = get_pte(mm, pgn, 0);
+    addr_t *pte_ptr = get_pte(mm->pgd, pgn, 0);
     if (pte_ptr == NULL || *pte_ptr == 0)
       continue;
     addr_t pte = *pte_ptr;
