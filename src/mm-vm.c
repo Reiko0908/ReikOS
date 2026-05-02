@@ -136,16 +136,22 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz) {
   cur_vma->vm_end = old_end + inc_amt;
   cur_vma->sbrk = area->rg_end;
   
-  struct vm_rg_struct *newrg = malloc(sizeof(struct vm_rg_struct));
-  if (vm_map_range(caller, area->rg_start, area->rg_end, old_end, inc_pgn, newrg) != 0) {
+  struct vm_rg_struct newrg;
+  if (vm_map_range(caller, area->rg_start, area->rg_end, old_end, inc_pgn, &newrg) != 0) {
     cur_vma->vm_end = old_end;
-    cur_vma->sbrk = old_sbrk;
+    cur_vma->sbrk   = old_sbrk;
     free(area);
-    free(newrg);
     return -1;
   }
+
+  struct vm_rg_struct *free_rg = malloc(sizeof(struct vm_rg_struct));
+  if (free_rg) {
+    free_rg->rg_start = newrg.rg_start;
+    free_rg->rg_end   = newrg.rg_end;
+    free_rg->rg_next  = NULL;
+    enlist_vm_freerg_list(caller->mm, free_rg);
+  }
   free(area);
-  free(newrg);
   return 0;
 }
 
@@ -176,18 +182,25 @@ int krnl_inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz) {
   cur_vma->vm_end = old_end + inc_amt;
   cur_vma->sbrk = area->rg_end;
   
-  struct vm_rg_struct *newrg = malloc(sizeof(struct vm_rg_struct));
-  if (vm_map_kernel(caller, area->rg_start, area->rg_end, old_end, inc_pgn, newrg) != 0) {
+  struct vm_rg_struct newrg;
+  if (vm_map_kernel(caller, area->rg_start, area->rg_end, old_end, inc_pgn, &newrg) != 0) {
     cur_vma->vm_end = old_end;
-    cur_vma->sbrk = old_sbrk;
+    cur_vma->sbrk   = old_sbrk;
     free(area);
-    free(newrg);
     return -1;
   }
+
+  struct vm_rg_struct *free_rg = malloc(sizeof(struct vm_rg_struct));
+  if (free_rg) {
+    free_rg->rg_start = newrg.rg_start;
+    free_rg->rg_end   = newrg.rg_end;
+    free_rg->rg_next  = NULL;
+    enlist_vm_freerg_list(caller->krnl->mm, free_rg);
+  }
   free(area);
-  free(newrg);
   return 0;
 }
+
 /* =========================================================================
  * vm_map_range - validate arguments then delegate to vm_map_ram
  * ========================================================================= */
