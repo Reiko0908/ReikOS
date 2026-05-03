@@ -372,26 +372,27 @@ int krnl_pg_setval(struct mm_struct *mm, int addr, BYTE value, struct pcb_t *cal
  *@size: allocated size
  *
  */
-int __read(struct pcb_t *caller, int vmaid, int rgid, addr_t offset,
-           BYTE *data) {
+int __read(struct pcb_t *caller, int vmaid, int rgid, addr_t offset, BYTE *data) {
   pthread_mutex_lock(&mmvm_lock);
-  struct vm_rg_struct *currg = get_symrg_byid(caller->mm, rgid);
+  struct vm_rg_struct   *currg   = get_symrg_byid(caller->mm, rgid);
   struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
   if (!currg || !cur_vma) {
     pthread_mutex_unlock(&mmvm_lock);
     return -1;
   }
-  if(curr->rg_end <= currg->rg_start) {
+  if (currg->rg_start >= currg->rg_end) {
     pthread_mutex_unlock(&mmvm_lock);
     return -1;
   }
-  
-  adrd_t addr = currg->rg_start + offset;
-  if(addr < currg->rg_start || addr >= currg->rg_end) {
+  if (currg->rg_start + offset >= currg->rg_end) {
     pthread_mutex_unlock(&mmvm_lock);
     return -1;
   }
-  if(pg_getval(caller->mm, currg->rg_start + offset, data, caller) != 0) {
+  if (currg->vmaid != vmaid) {
+    pthread_mutex_unlock(&mmvm_lock);
+    return -1;
+  }
+  if (pg_getval(caller->mm, currg->rg_start + offset, data, caller) != 0) {
     pthread_mutex_unlock(&mmvm_lock);
     return -1;
   }
@@ -406,10 +407,12 @@ int libread(struct pcb_t *proc, // Process executing the instruction
             uint32_t *destination) {
   BYTE data;
   printf("%s:%d\n", __func__, __LINE__);
-  if (!IS_USER_SPACE(offset + proc->regs[source])) return -1;
-  int val = __read(proc, 0, source, offset, &data);
-  if (val == 0) proc->regs[*destination] = (addr_t)data;
 
+  addr_t addr = proc->regs[source] + offset;
+  if (!IS_USER_SPACE(addr)) return -1;
+  int vmaid = vm_lookup_vmaid(proc->mm, addr);
+  int val = __read(proc, vmaid, source, offset, &data);
+  if (val == 0) proc->regs[*destination] = (addr_t)data;
 #ifdef IODUMP
   printf("[LIBREAD] PID %d: read [%u] [" FORMAT_ADDR "] [%u]\n", proc->pid, source, offset, *destination);
 #ifdef PAGETBL_DUMP
@@ -449,7 +452,8 @@ int libwrite(struct pcb_t *proc,   // Process executing the instruction
              addr_t offset) {
   addr_t addr = proc->regs[destination] + offset;
   if (!IS_USER_SPACE(addr)) return -1;
-  int val = __write(proc, 0, destination, offset, data);
+  int vmaid = vm_lookup_vmaid(proc->mm, addr);
+  int val = __write(proc, vmaid, destination, offset, data);
   if (val == -1) return -1;
 #ifdef IODUMP
   printf("[LIBWRITE] PID %d: write [%u] [%u] [" FORMAT_ADDR "]\n", proc->pid, data, destination, offset);
@@ -472,10 +476,8 @@ int libkmem_malloc(struct pcb_t *caller, uint32_t size, uint32_t reg_index) {
    */
   addr_t  addr;
   int val = __kmalloc(caller, -1, reg_index, size, &addr);
-
-  /* TODO: provide OS kmem allocation validation
-   */
-
+  if (val == -1) return -1;
+  caller->regs[reg_index] = addr;
   return 0;
 }
 
@@ -490,11 +492,9 @@ addr_t __kmalloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size,
                  addr_t *alloc_addr) {
   /* TODO: provide OS kernel memory allocation
    *       update krnl_pgd for OS kernel level management */
-
-  // struct krnl_t *krnl = caller->krnl;
-  // krnl->symrgtbl...
-  // krnl->krnl_pgd ...
-
+  pthread_mutex_lock(&mmvm_lock);
+  struct mm_struct *krnl_mm = caller->krnl->mm;
+  
   return 0;
 }
 
