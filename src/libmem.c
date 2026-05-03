@@ -275,6 +275,9 @@ int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller) {
   return 0;
 }
 
+/* 
+ * krnl_pg_getpage - get the page in ram - kernel pages must always be present, never swapped 
+ */
 int krnl_pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller) {
   uint32_t pte = krnl_pte_get_entry(caller, pgn);
   /* Kernel pages must always be present — never swapped */
@@ -310,6 +313,18 @@ int pg_getval(struct mm_struct *mm, int addr, BYTE *data,
   return 0;
 }
 
+/*
+ * krnl_pg_getval - read value at given offset - kernel memory access
+ */
+int krnl_pg_getval(struct mm_struct *mm, int addr, BYTE *data, struct pcb_t *caller) {
+  int pgn = PAGING64_PGN(addr);
+  int off = PAGING64_OFFST(addr);
+  int fpn;
+  if (krnl_pg_getpage(mm, pgn, &fpn, caller) != 0) return -1;
+  int phyaddr = (fpn << PAGING64_ADDR_FPN_LOBIT) + off;
+  return MEMPHY_read(caller->krnl->mram, phyaddr, data);
+}
+
 /*pg_setval - write value to given offset
  *@mm: memory region
  *@addr: virtual address to acess
@@ -335,6 +350,18 @@ int pg_setval(struct mm_struct *mm, int addr, BYTE value,
   regs.a3 = value;
   _syscall(caller->krnl, caller->pid, 17, &regs);
   return 0;
+}
+
+/*
+ * krnl_pg_setval - write value to given offset - kernel memory access
+ */
+int krnl_pg_setval(struct mm_struct *mm, int addr, BYTE value, struct pcb_t *caller) {
+  int pgn = PAGING_PGN(addr);
+  int off = PAGING_OFFST(addr);
+  int fpn;
+  if (krnl_pg_getpage(mm, pgn, &fpn, caller) != 0) return -1;
+  int phyaddr = (fpn << PAGING_ADDR_FPN_LOBIT) + off;
+  return MEMPHY_write(caller->krnl->mram, phyaddr, value);
 }
 
 /*__read - read value in region memory
