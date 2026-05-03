@@ -48,8 +48,7 @@ int init_pte(addr_t *pte, int pre, /* present */
 /*
  * get_pd_from_address - Extract 5-level indices from a virtual address
  */
-int get_pd_from_address(addr_t addr, addr_t *pgd, addr_t *p4d, addr_t *pud,
-                        addr_t *pmd, addr_t *pt) {
+int get_pd_from_address(addr_t addr, addr_t *pgd, addr_t *p4d, addr_t *pud, addr_t *pmd, addr_t *pt) {
   *pgd = PAGING64_ADDR_PGD(addr);
   *p4d = PAGING64_ADDR_P4D(addr);
   *pud = PAGING64_ADDR_PUD(addr);
@@ -117,8 +116,7 @@ static addr_t *get_pte(addr_t *pgd_root, addr_t pgn, int alloc) {
  */
 int pte_set_swap(struct pcb_t *caller, addr_t pgn, int swptyp, addr_t swpoff) {
   addr_t *pte = get_pte(caller->mm->pgd, pgn, 1);
-  if (!pte)
-    return -1;
+  if (!pte) return -1;
 
   CLRBIT(*pte, PAGING_PTE_PRESENT_MASK);
   SETBIT(*pte, PAGING_PTE_SWAPPED_MASK);
