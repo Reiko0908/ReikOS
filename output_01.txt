@@ -1,0 +1,44 @@
+
+========== KERNEL INFO ==========
+
+===== RAM =====
+max size : 16384
+rdm flag : 1
+cursor   : 0
+===== STORAGE DUMP =====
+base: 0x5cefb2a0f2a0
+
+0x5cefb2a0f2a0 : 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+0x5cefb2a0f2c0 : 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+0x5cefb2a0f2e0 : 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+  FREE frames:
+    (NULL / empty)
+  USED frames:
+    [fpn=3, owner=0x5cefb2a235c0]
+    [fpn=2, owner=0x5cefb2a235c0]
+    [fpn=1, owner=0x5cefb2a235c0]
+    [fpn=0, owner=0x5cefb2a235c0]
+
+===== MM STRUCT =====
+
+[PAGE TABLE]
+PGD: 0x5cefb2a23a10
+P4D: 0x5cefb2a24a20
+PUD: 0x5cefb2a25a30
+PMD: 0x5cefb2a26a40
+PT : 0x5cefb2a27a50
+
+[VMA LIST]
+  VMA id=0 start=0 end=16384 sbrk=16384
+    free regions:
+      [16384 - 16384]
+
+[SYMBOL TABLE]
+  rgid=0: [0 - 256]
+  rgid=1: [256 - 768]
+  rgid=2: [768 - 2816]
+  rgid=3: [2816 - 4096]
+  rgid=4: [4096 - 8192]
+  rgid=5: [8192 - 12288]
+  rgid=6: [12288 - 16384]
+======================
