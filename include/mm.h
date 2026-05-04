@@ -180,8 +180,6 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz);
 int find_victim_page(struct mm_struct* mm, addr_t *pgn);
 struct vm_area_struct *get_vma_by_num(struct mm_struct *mm, int vmaid);
 struct vm_rg_struct *get_vm_area_node_at_brk(struct pcb_t *caller, int vmaid, addr_t size, addr_t alignedsz);
-int vm_lookup_rgid (struct mm_struct *mm, addr_t addr);
-int vm_lookup_vmaid (struct mm_struct *mm, addr_t addr);
 
 /* Buddy allocator prototypes */
 int buddy_init(struct buddy_system *bs, int total_frames);

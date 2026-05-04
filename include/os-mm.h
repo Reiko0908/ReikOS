@@ -97,20 +97,28 @@ struct free_obj {
  * Kernel slab struct
  */
 struct slab_struct {
-  addr_t addr;
-  struct free_obj *free_list;
-  int free_count;
-  struct slab_struct *next;
+   addr_t addr;
+   struct free_obj *free_list;
+#ifdef MM64
+   addr_t storage;
+#else
+   uint32_t storage;
+#endif
+   struct slab_struct *next;
 };
 
 /* 
  * Kernel cache pool struct
  */
 struct kcache_pool_struct {
-  int size;
-  int align;
-  int slab_count;
-  struct slab_struct *slabs;
+   int size;
+   int align;
+   struct slab_struct *slabs;
+#ifdef MM64
+   addr_t storage; // index of the first available slot in a slab
+#else
+   uint32_t storage;
+#endif
 };
 
 /* 
