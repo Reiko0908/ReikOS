@@ -132,15 +132,15 @@ int __write_kernel_mem(struct pcb_t *caller, int vmaid, int rgid, addr_t offset,
 /* Page directory prototypes */
 int get_pd_from_address(addr_t addr, addr_t* pgd, addr_t* p4d, addr_t* pud, addr_t* pmd, addr_t* pt);
 int get_pd_from_pagenum(addr_t pgn, addr_t* pgd, addr_t* p4d, addr_t* pud, addr_t* pmd, addr_t* pt);
-static addr_t *get_pte(addr_t *pgd_root, addr_t pgn, int alloc);
-static int __pte_set_fpn(addr_t *pgd_root, addr_t pgn, addr_t fpn);
+static addr_t *get_pte(struct mm_struct *mm, addr_t pgn, int alloc);
+static int __pte_set_fpn(struct mm_struct *mm, addr_t pgn, addr_t fpn);
 int pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn);
 int krnl_pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn);
 int pte_set_swap(struct pcb_t *caller, addr_t pgn, int swptyp, addr_t swpoff);
-static uint32_t __pte_get_entry(addr_t *pgd_root, addr_t pgn);
+static uint32_t __pte_get_entry(struct mm_struct *mm, addr_t pgn);
 uint32_t pte_get_entry(struct pcb_t *caller, addr_t pgn);
 uint32_t krnl_pte_get_entry(struct pcb_t *caller, addr_t pgn);
-static int __pte_set_entry(addr_t *pgd_root, addr_t pgn, uint32_t pte_val);
+static int __pte_set_entry(struct mm_struct *mm, addr_t pgn, uint32_t pte_val);
 int pte_set_entry(struct pcb_t *caller, addr_t pgn, uint32_t pte_val);
 int krnl_pte_set_entry(struct pcb_t *caller, addr_t pgn, uint32_t pte_val);
 int init_pte(addr_t *pte,
@@ -188,9 +188,8 @@ int buddy_free(struct buddy_system *bs, int order, int fpn);
 
 /* MEM/PHY protypes */
 int MEMPHY_get_freefp(struct memphy_struct *mp, addr_t *fpn);
-int MEMPHY_get_contiguous_freefp(struct memphy_struct *mp, int req_pgnum, addr_t *retfpn);
 int MEMPHY_put_freefp(struct memphy_struct *mp, addr_t fpn);
-int MEMPHY_put_contiguous_freefp(struct memphy_struct *mp, addr_t fpn, int req_pgnum);
+int MEMPHY_get_contiguous_freefp(struct memphy_struct *mp, int req_pgnum, addr_t *retfpn);
 int MEMPHY_read(struct memphy_struct * mp, addr_t addr, BYTE *value);
 int MEMPHY_write(struct memphy_struct * mp, addr_t addr, BYTE data);
 int MEMPHY_format(struct memphy_struct *mp, int pagesz);
