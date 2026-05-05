@@ -271,8 +271,10 @@ int init_memphy(struct memphy_struct *mp, addr_t max_size, int randomflg)
   mp->maxsz = max_size;
   memset(mp->storage, 0, max_size * sizeof(BYTE));
   mp->rdmflg = (randomflg != 0) ? 1 : 0;
-  if (!mp->rdmflg) /* Not Ramdom acess device, then it serial device*/
+  if (mp->rdmflg)
     mp->cursor = 0;
+  else
+    mp->cursor = 1;
   mp->buddy_initialized = 0;
   if (MEMPHY_format(mp, PAGING64_PAGESZ) != 0) {
     free(mp->storage);

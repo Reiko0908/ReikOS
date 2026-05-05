@@ -236,29 +236,4 @@ addr_t vm_map_kernel(struct pcb_t *caller, addr_t astart, addr_t aend,
   if (mapstart < astart || mapstart + mapsz > aend) return -1;
   return krnl_vm_map_ram(caller, astart, aend, mapstart, incpgnum, ret_rg);
 }
-
-int vm_lookup_rgid (struct mm_struct *mm, addr_t addr) {
-  if (!mm) return -1;
-  for (int i = 0; i < PAGING_MAX_SYMTBL_SZ; i++) {
-    struct vm_rg_struct *rg = &mm->symrgtbl[i];
-    if (rg->rg_start >= rg->rg_end) continue;
-    if (addr >= rg->rg_start && addr < rg->rg_end) return i;
-  }
-  return -1;
-}
-
-int vm_lookup_vmaid (struct mm_struct *mm, addr_t addr) {
-  if (!mm) return -1;
-  struct vm_area_struct *vma = mm->mmap;
-  while (vma) {
-    if (vma->vm_start >= vma->vm_end) {
-      vma = vma->vm_next;
-      continue;
-    }
-    if (addr >= vma->vm_start && addr < vma->vm_end)
-      return vma->vm_id;
-    vma = vma->vm_next;
-  }
-  return -1;
-}
 // #endif

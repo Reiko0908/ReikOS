@@ -217,10 +217,7 @@ int liballoc(struct pcb_t *proc, addr_t size, uint32_t reg_index) {
  */
 int libfree(struct pcb_t *proc, uint32_t reg_index)
 {
-  addr_t address = proc->regs[reg_index];
-  int vmaid = vm_lookup_vmaid(proc->mm, address);
-  if (vmaid == -1) return -1;
-  int val = __free(proc, vmaid, reg_index);
+  int val = __free(proc, 0, reg_index);
   if (val == -1) return -1;
 #ifdef IODUMP
   printf("[LIBFREE] PID %d: free [%u]\n", proc->pid, reg_index);
@@ -410,8 +407,7 @@ int libread(struct pcb_t *proc, // Process executing the instruction
 
   addr_t addr = proc->regs[source] + offset;
   if (!IS_USER_SPACE(addr)) return -1;
-  int vmaid = vm_lookup_vmaid(proc->mm, addr);
-  int val = __read(proc, vmaid, source, offset, &data);
+  int val = __read(proc, 0, source, offset, &data);
   if (val == 0) proc->regs[*destination] = (addr_t)data;
 #ifdef IODUMP
   printf("[LIBREAD] PID %d: read [%u] [" FORMAT_ADDR "] [%u]\n", proc->pid, source, offset, *destination);
@@ -440,6 +436,18 @@ int __write(struct pcb_t *caller, int vmaid, int rgid, addr_t offset, BYTE value
     pthread_mutex_unlock(&mmvm_lock);
     return -1;
   }
+  if (currg->rg_start >= currg->rg_end) {
+    pthread_mutex_unlock(&mmvm_lock);
+    return -1;
+  }
+  if (currg->rg_start + offset >= currg->rg_end) {
+    pthread_mutex_unlock(&mmvm_lock);
+    return -1;
+  }
+  if (currg->vmaid != vmaid) {
+    pthread_mutex_unlock(&mmvm_lock);
+    return -1;
+  }
   pg_setval(caller->mm, currg->rg_start + offset, value, caller);
   pthread_mutex_unlock(&mmvm_lock);
   return 0;
@@ -452,8 +460,7 @@ int libwrite(struct pcb_t *proc,   // Process executing the instruction
              addr_t offset) {
   addr_t addr = proc->regs[destination] + offset;
   if (!IS_USER_SPACE(addr)) return -1;
-  int vmaid = vm_lookup_vmaid(proc->mm, addr);
-  int val = __write(proc, vmaid, destination, offset, data);
+  int val = __write(proc, 0, destination, offset, data);
   if (val == -1) return -1;
 #ifdef IODUMP
   printf("[LIBWRITE] PID %d: write [%u] [%u] [" FORMAT_ADDR "]\n", proc->pid, data, destination, offset);
@@ -475,7 +482,7 @@ int libkmem_malloc(struct pcb_t *caller, uint32_t size, uint32_t reg_index) {
    *       and forward the request to helper
    */
   addr_t  addr;
-  int val = __kmalloc(caller, -1, reg_index, size, &addr);
+  int val = __kmalloc(caller, 0, reg_index, size, &addr);
   if (val == -1) return -1;
   caller->regs[reg_index] = addr;
   return 0;
@@ -494,7 +501,96 @@ addr_t __kmalloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size,
    *       update krnl_pgd for OS kernel level management */
   pthread_mutex_lock(&mmvm_lock);
   struct mm_struct *krnl_mm = caller->krnl->mm;
-  
+  if (rgid < 0 || rgid >= PAGING_MAX_SYMTBL_SZ) {
+    pthread_mutex_unlock(&mmvm_lock);
+    return (addr_t)-1;
+  }
+  if (krnl_mm->symrgtbl[rgid].rg_start != 0 || krnl_mm->symrgtbl[rgid].rg_end   != 0) {
+    pthread_mutex_unlock(&mmvm_lock);
+    return (addr_t)-1;
+  }
+
+  struct vm_area_struct *cur_vma = get_vma_by_num(krnl_mm, vmaid);
+  if (!cur_vma) {
+    pthread_mutex_unlock(&mmvm_lock);
+    return (addr_t)-1;
+  }
+  struct vm_rg_struct rgnode;
+  rgnode.mode_bit = 0;
+  if (get_free_vmrg_area(caller, vmaid, size, &rgnode) != 0) {
+    addr_t old_sbrk = cur_vma->sbrk;
+    if (krnl_inc_vma_limit(caller, vmaid, size) != 0) {
+      pthread_mutex_unlock(&mmvm_lock);
+      return (addr_t)-1;
+    } else {
+      rgnode.rg_start = old_sbrk;
+      rgnode.rg_end = old_sbrk + size;
+      rgnode.vmaid = vmaid;
+      if (old_sbrk + size < cur_vma->sbrk) {
+        struct vm_rg_struct *free_tail_rg = malloc(sizeof(struct vm_rg_struct));
+        if (free_tail_rg) {
+          free_tail_rg->rg_start = old_sbrk + size;
+          free_tail_rg->rg_end = cur_vma->sbrk;
+          free_tail_rg->mode_bit = 0;
+          free_tail_rg->vmaid = vmaid;
+          free_tail_rg->rg_next = NULL;
+          /* Enlist the new region */
+          enlist_vm_freerg_list(krnl_mm, free_tail_rg);
+        }
+      }
+    }
+  }
+  krnl_mm->symrgtbl[rgid].rg_start = rgnode.rg_start;
+  krnl_mm->symrgtbl[rgid].rg_end = rgnode.rg_end;
+  krnl_mm->symrgtbl[rgid].vmaid = rgnode.vmaid;
+  krnl_mm->symrgtbl[rgid].mode_bit = rgnode.mode_bit;
+  *alloc_addr = rgnode.rg_start;
+  pthread_mutex_unlock(&mmvm_lock);
+  return 0;
+}
+
+int __slab_alloc(struct pcb_t *caller, struct kmem_cache_pool_struct *pool) {
+  int slab_min_objs = 8;
+  addr_t req_size = (addr_t)(pool->size * slab_min_objs + pool->align);
+  addr_t slab_size = PAGING64_PAGE_ALIGNSZ(req_size);
+  int rgid = -1;
+  struct mm_struct *krnl_mm = caller->krnl->mm;
+  for (int i = 0; i < PAGING_MAX_SYMTBL_SZ; i++) {
+    if (krnl_mm->symrgtbl[i].rg_start == 0 && krnl_mm->symrgtbl[i].rg_end == 0) {
+      rgid = i;
+      break;
+    }
+  }
+
+  if (rgid == -1) return -1;
+  addr_t new_slab_addr;
+  if (__kmalloc(caller, 0, rgid, slab_size, &new_slab_addr) != 0) return -1;
+  addr_t base_addr = new_slab_addr;
+  if (pool->align > 0 && base_addr % pool->align != 0)
+    base_addr += pool->align - (base_addr % pool->align);
+
+  int usable_space = (int)(slab_size - (base_addr - new_slab_addr));
+  int num_objs = usable_space / pool->size;
+  if (num_objs <= 0) return -1;
+
+  struct slab_struct *new_slab = malloc(sizeof(struct slab_struct));
+  if (!new_slab) return -1;
+  new_slab->addr = base_addr;
+  new_slab->free_list = malloc((size_t)num_objs * sizeof(struct free_obj));
+  if (!new_slab->free_list) {
+    free(new_slab);
+    return -1;
+  }
+  new_slab->storage = 0;
+  for (int i = 0; i < num_objs; i++) {
+    new_slab->free_list[i].addr = base_addr + (addr_t)(i * pool->size);
+    new_slab->free_list[i].next = (i < num_objs - 1) ? i + 1 : -1;
+  }
+
+  pthread_mutex_lock(&mmvm_lock);
+  new_slab->next = pool->slabs;
+  pool->slabs    = new_slab;
+  pthread_mutex_unlock(&mmvm_lock);
   return 0;
 }
 
@@ -506,13 +602,21 @@ addr_t __kmalloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size,
  */
 int libkmem_cache_pool_create(struct pcb_t *caller, uint32_t size,
                               uint32_t align, uint32_t cache_pool_id) {
-  /* TODO: provide OS level management */
-
-  // struct krnl_t *krnl = caller->krnl;
-  // krnl->kcpooltbl...
-  // krnl->krnl_pgd ...
-
-  return 0;
+  pthread_mutex_lock(&mmvm_lock);
+  if (!caller || !caller->krnl || !caller->krnl->mm) {
+    pthread_mutex_unlock(&mmvm_lock);
+    return -1;
+  }
+  struct kcache_pool_struct *pool = &caller->krnl->kcpooltbl[cache_pool_id];
+  if (align > 0 && size % align != 0)
+    size += align - (size % align);
+  
+  pool->size = size;
+  pool->align = align;
+  pool->slabs = NULL;
+  pool->slab_count = (addr_t)-1;
+  pthread_mutex_unlock(&mmvm_lock);
+  return __slab_alloc(caller, pool);
 }
 
 /*libkmem_cache_alloc - allocate cache slot in cache pool, cache slot has
@@ -526,11 +630,9 @@ int libkmem_cache_alloc(struct pcb_t *proc, uint32_t cache_pool_id,
   /* TODO: provide OS level management
    *       and forward the request to helper
    */
-  addr_t addr = __kmem_cache_alloc(proc, -1, reg_index, cache_pool_id, &addr);
-
-  // krnl->kcpooltbl...
-  // krnl->krnl_pgd ...
-
+  addr_t addr = __kmem_cache_alloc(proc, 0, reg_index, cache_pool_id, &addr);
+  if (addr != 0) return -1;
+  proc->regs[reg_index] = addr;
   return 0;
 }
 
@@ -545,26 +647,43 @@ int libkmem_cache_alloc(struct pcb_t *proc, uint32_t cache_pool_id,
 addr_t __kmem_cache_alloc(struct pcb_t *caller, int vmaid, int rgid,
                           int cache_pool_id, addr_t *alloc_addr) {
   /* TODO: provide OS level management */
-  /* TODO: provide OS level management */
+  pthread_mutex_lock(&mmvm_lock);
+  struct mm_struct *krnl_mm = caller->krnl->mm;
+  if (rgid < 0 || rgid >= PAGING_MAX_SYMTBL_SZ) {
+    pthread_mutex_unlock(&mmvm_lock);
+    return (addr_t)-1;
+  }
 
-  // struct krnl_t *krnl = caller->krnl;
-  // krnl->symrgtbl...
-  // krnl->kcpooltbl...
-  // krnl->krnl_pgd ...
+  struct kcache_pool_struct *pool = &caller->krnl->kcpooltbl[cache_pool_id];
+  struct slab_struct *slab = NULL;
+  while (true) {
+    slab = pool->slabs;
+    while (slab != NULL && slab->storage == (addr_t)-1) {
+      slab = slab->next;
+    }
+    if (slab != NULL) break; /* Found a slab with free space */ 
+    pthread_mutex_unlock(&mmvm_lock);
+    if (__slab_alloc(caller, pool) < 0) return (addr_t)-1;
+    pthread_mutex_lock(&mmvm_lock);
+  }
+  int free_idx  = (int)slab->storage;
+  *alloc_addr   = slab->free_list[free_idx].addr;
+  slab->storage = (addr_t)slab->free_list[free_idx].next;
 
+  mm->symrgtbl[rgid].rg_start  = *alloc_addr;
+  mm->symrgtbl[rgid].rg_end    = *alloc_addr + (addr_t)pool->size;
+  mm->symrgtbl[rgid].vmaid     = vmaid;
+  mm->symrgtbl[rgid].mode_bit  = 0;
+
+  pthread_mutex_unlock(&mmvm_lock);
   return 0;
 }
 
 int libkmem_copy_from_user(struct pcb_t *caller, uint32_t source,
-                           uint32_t destination, uint32_t offset,
-                           uint32_t size) {
-  /* TODO: provide OS level management kmem
-   */
-  /*
-   * TODO: Map kernel address range
-   */
-  //__read_user_mem(...)
-  //__write_kernel_mem(...);
+                           uint32_t destination, uint32_t offset, uint32_t size) {
+  addr_t user_addr = caller->regs[source];
+  addr_t krnl_addr = caller->regs[destination];
+
 
   return 0;
 }
