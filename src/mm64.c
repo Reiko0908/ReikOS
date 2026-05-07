@@ -548,7 +548,7 @@ int print_pgtbl(struct pcb_t *caller, addr_t start, addr_t end) {
   printf("Page table dump [pgn %lu .. %lu]:\n", (unsigned long)pgn_start,
          (unsigned long)pgn_end);
   for (addr_t pgn = pgn_start; pgn < pgn_end; ++pgn) {
-    addr_t *pte_ptr = get_pte(mm->pgd, pgn, 0);
+    addr_t *pte_ptr = get_pte(mm, pgn, 0);
     if (pte_ptr == NULL || *pte_ptr == 0)
       continue;
     addr_t pte = *pte_ptr;
