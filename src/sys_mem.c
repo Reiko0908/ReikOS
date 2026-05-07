@@ -26,15 +26,9 @@ int __sys_memmap(struct krnl_t *krnl, uint32_t pid, struct sc_regs* regs)
 {
    int memop = regs->a1;
    BYTE value = 0;
-   
-   /* TODO THIS DUMMY CREATE EMPTY PROC TO AVOID COMPILER NOTIFY 
-    *      need to be eliminated
-	*/
    struct pcb_t *caller = NULL;
 
-   if (krnl == NULL || regs == NULL) {
-      return -1;
-   }
+   if (!krnl || !regs) return -1;
 
    struct queue_t *running_list = krnl->running_list;
    
@@ -69,11 +63,6 @@ int __sys_memmap(struct krnl_t *krnl, uint32_t pid, struct sc_regs* regs)
    /* TODO: Traverse proclist to terminate the proc
     *       stcmp to check the process match proc_name
     */
-//	struct queue_t *running_list = krnl->running_list;
-
-    /* TODO Maching and marking the process */
-    /* user process are not allowed to access directly pcb in kernel space of syscall */
-    //....
 	
    switch (memop) {
    case SYSMEM_MAP_OP:
