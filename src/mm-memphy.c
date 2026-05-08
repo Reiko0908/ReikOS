@@ -167,10 +167,12 @@ int MEMPHY_seq_read(struct memphy_struct *mp, addr_t addr, BYTE *value)
 int MEMPHY_read(struct memphy_struct *mp, addr_t addr, BYTE *value)
 {
   if (mp == NULL) return -1;
+  pthread_mutex_lock(&mp->lock);
   if (mp->rdmflg)
     *value = mp->storage[addr];
   else
     return MEMPHY_seq_read(mp, addr, value);
+  pthread_mutex_unlock(&mp->lock);
   return 0;
 }
 
@@ -185,10 +187,12 @@ int MEMPHY_seq_write(struct memphy_struct *mp, addr_t addr, BYTE value)
 int MEMPHY_write(struct memphy_struct *mp, addr_t addr, BYTE data)
 {
   if (mp == NULL) return -1;
+  pthread_mutex_lock(&mp->lock);
   if (mp->rdmflg)
     mp->storage[addr] = data;
   else
     return MEMPHY_seq_write(mp, addr, data);
+  pthread_mutex_unlock(&mp->lock);
   return 0;
 }
 
@@ -206,13 +210,20 @@ int MEMPHY_write(struct memphy_struct *mp, addr_t addr, BYTE data)
 int MEMPHY_format(struct memphy_struct *mp, int pagesz)
 {
   if (!mp || pagesz <= 0) return -1;
+  pthread_mutex_lock(&mp->lock);
   int numfp = mp->maxsz / PAGING64_PAGESZ;
-  if (numfp <= 0) return -1;
+  if (numfp <= 0) {
+    pthread_mutex_unlock(&mp->lock);
+    return -1;
+  }
 
   fp_list_free_all(&mp->free_fp_list);
   fp_list_free_all(&mp->used_fp_list);
 
-  if (buddy_init(&mp->buddy, numfp) != 0) return -1;
+  if (buddy_init(&mp->buddy, numfp) != 0) {
+    pthread_mutex_unlock(&mp->lock);
+    return -1;
+  }
   mp->buddy_initialized = 1;
 
   /* Build free_fp_list: one node per frame (order 0) so the list is
@@ -226,6 +237,7 @@ int MEMPHY_format(struct memphy_struct *mp, int pagesz)
       blk = blk->next;
     }
   }
+  pthread_mutex_unlock(&mp->lock);
   return 0;
 }
 
@@ -235,11 +247,16 @@ int MEMPHY_format(struct memphy_struct *mp, int pagesz)
  */
 int MEMPHY_get_freefp(struct memphy_struct *mp, addr_t *retfpn) {
   if (!mp || !retfpn || !mp->buddy_initialized) return -1;
+  pthread_mutex_lock(&mp->lock);
   int fpn;
-  if (buddy_alloc(&mp->buddy, 0, &fpn) != 0) return -1;
+  if (buddy_alloc(&mp->buddy, 0, &fpn) != 0) {
+    pthread_mutex_unlock(&mp->lock);
+    return -1;
+  }
   fp_list_remove(&mp->free_fp_list, (addr_t)fpn);
   fp_list_push(&mp->used_fp_list, (addr_t)fpn, 0);
   *retfpn = (addr_t)fpn;
+  pthread_mutex_unlock(&mp->lock);
   return 0;
 }
 
@@ -250,16 +267,21 @@ int MEMPHY_get_freefp(struct memphy_struct *mp, addr_t *retfpn) {
  */
 int MEMPHY_get_contiguous_freefp(struct memphy_struct *mp, int req_pgnum, addr_t *retfpn) {
   if (!mp || !retfpn || !mp->buddy_initialized || req_pgnum <= 0) return -1;
+  pthread_mutex_lock(&mp->lock);
   int order = 0;
   while ((1 << order) < req_pgnum) order++;
   int fpn;
-  if (buddy_alloc(&mp->buddy, order, &fpn) != 0) return -1;
+  if (buddy_alloc(&mp->buddy, order, &fpn) != 0) {
+    pthread_mutex_unlock(&mp->lock);
+    return -1;
+  }
   int count = 1 << order;
   for (int i = 0; i < count; i++) {
     fp_list_remove(&mp->free_fp_list, (addr_t)(fpn + i));
-    // fp_list_push(&mp->used_fp_list, (addr_t)(fpn + i), 0);
+    fp_list_push(&mp->used_fp_list, (addr_t)(fpn + i), 0);
   }
   *retfpn = (addr_t)fpn;
+  pthread_mutex_unlock(&mp->lock);
   return 0;
 }
 
@@ -270,9 +292,14 @@ int MEMPHY_get_contiguous_freefp(struct memphy_struct *mp, int req_pgnum, addr_t
 int MEMPHY_put_freefp(struct memphy_struct *mp, addr_t fpn)
 {
   if (!mp || !mp->buddy_initialized) return -1;
+  pthread_mutex_lock(&mp->lock);
   fp_list_remove(&mp->used_fp_list, fpn);
-  if (buddy_free(&mp->buddy, 0, (int)fpn) != 0) return -1;
+  if (buddy_free(&mp->buddy, 0, (int)fpn) != 0) {
+    pthread_mutex_unlock(&mp->lock);
+    return -1;
+  }
   fp_list_push(&mp->free_fp_list, fpn, 0);
+  pthread_mutex_unlock(&mp->lock);
   return 0;
 }
 
@@ -283,11 +310,17 @@ int MEMPHY_put_freefp(struct memphy_struct *mp, addr_t fpn)
 int MEMPHY_set_fp_owner(struct memphy_struct *mp, addr_t fpn, void *owner)
 {
   if (!mp) return -1;
+  pthread_mutex_lock(&mp->lock);
   struct framephy_struct *cur = mp->used_fp_list;
   while (cur) {
-    if (cur->fpn == fpn) { cur->owner = owner; return 0; }
+    if (cur->fpn == fpn) {
+      cur->owner = owner;
+      pthread_mutex_unlock(&mp->lock);
+      return 0;
+    }
     cur = cur->fp_next;
   }
+  pthread_mutex_unlock(&mp->lock);
   return -1;
 }
 
@@ -312,6 +345,7 @@ int MEMPHY_dump(struct memphy_struct *mp)
 
 int init_memphy(struct memphy_struct *mp, addr_t max_size, int randomflg)
 {
+  pthread_mutex_init(&mp->lock, NULL);
   mp->storage = (BYTE *)malloc(max_size * sizeof(BYTE));
   if (!mp->storage) return -1;
   mp->maxsz = max_size;

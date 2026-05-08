@@ -16,6 +16,7 @@
 static int time_slot;
 static int num_cpus;
 static int done = 0;
+static pthread_mutex_t done_lock;
 static struct krnl_t os;
 
 #ifdef MM_PAGING
@@ -80,7 +81,10 @@ static void * cpu_routine(void * args) {
 		}
 		
 		/* Recheck process status after loading new process */
-		if (proc == NULL && done) {
+		pthread_mutex_lock(&done_lock);
+		int done_check = done;
+		pthread_mutex_unlock(&done_lock);
+		if (proc == NULL && done_check) {
 			/* No process to run, exit */
 			printf("\tCPU %d stopped\n", id);
 			break;
@@ -162,7 +166,9 @@ static void * ld_routine(void * args) {
 	}
 	free(ld_processes.path);
 	free(ld_processes.start_time);
+	pthread_mutex_lock(&done_lock);
 	done = 1;
+	pthread_mutex_unlock(&done_lock);
 	detach_event(timer_id);
 	pthread_exit(NULL);
 }
@@ -219,6 +225,7 @@ static void read_config(const char * path) {
 #endif
 		strcat(ld_processes.path[i], proc);
 	}
+	fclose(file);
 }
 
 int main(int argc, char * argv[]) {
@@ -276,6 +283,9 @@ int main(int argc, char * argv[]) {
 
 	/* Init scheduler */
 	init_scheduler();
+
+	/* Init done lock */
+	pthread_mutex_init(&done_lock, NULL);
 
 	/* Run CPU and loader */
 #ifdef MM_PAGING

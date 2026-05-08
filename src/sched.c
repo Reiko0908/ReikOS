@@ -25,13 +25,19 @@ static int slot[MAX_PRIO];
 #endif
 
 int queue_empty(void) {
+	int is_empty;
+	pthread_mutex_lock(&queue_lock);
 #ifdef MLQ_SCHED
 	unsigned long prio;
 	for (prio = 0; prio < MAX_PRIO; prio++)
-		if(!empty(&mlq_ready_queue[prio])) 
+		if(!empty(&mlq_ready_queue[prio])) {
+			pthread_mutex_unlock(&queue_lock);
 			return -1;
+		}
 #endif
-	return (empty(&ready_queue) && empty(&run_queue));
+	is_empty = (empty(&ready_queue) && empty(&run_queue));
+	pthread_mutex_unlock(&queue_lock);
+	return is_empty;
 }
 
 void init_scheduler(void) {
@@ -47,6 +53,47 @@ void init_scheduler(void) {
 	run_queue.size = 0;
 	running_list.size = 0;
 	pthread_mutex_init(&queue_lock, NULL);
+}
+
+struct pcb_t * find_proc_by_pid(uint32_t pid) {
+	struct pcb_t *proc = NULL;
+
+	/* Scheduler queues are shared by loader, CPU threads, and syscalls. */
+	pthread_mutex_lock(&queue_lock);
+
+	/* First check processes that have already been dispatched to CPUs. */
+	for (int i = 0; i < running_list.size; i++) {
+		if (running_list.proc[i] != NULL && running_list.proc[i]->pid == pid) {
+			proc = running_list.proc[i];
+			goto out;
+		}
+	}
+
+	/* Then check the legacy ready queue used when MLQ scheduling is disabled. */
+	for (int i = 0; i < ready_queue.size; i++) {
+		if (ready_queue.proc[i] != NULL && ready_queue.proc[i]->pid == pid) {
+			proc = ready_queue.proc[i];
+			goto out;
+		}
+	}
+
+#ifdef MLQ_SCHED
+	/* In MLQ mode, ready processes are split by priority. */
+	for (int prio = 0; prio < MAX_PRIO; prio++) {
+		for (int i = 0; i < mlq_ready_queue[prio].size; i++) {
+			if (mlq_ready_queue[prio].proc[i] != NULL &&
+			    mlq_ready_queue[prio].proc[i]->pid == pid) {
+				proc = mlq_ready_queue[prio].proc[i];
+				goto out;
+			}
+		}
+	}
+#endif
+
+out:
+	/* Use one exit path so every successful branch releases queue_lock. */
+	pthread_mutex_unlock(&queue_lock);
+	return proc;
 }
 
 #ifdef MLQ_SCHED
