@@ -82,7 +82,7 @@ static addr_t *get_pte(struct mm_struct *mm, addr_t pgn, int alloc) {
     if (!pgd_root[pgd_idx]) return NULL;
   }
   addr_t *p4d_tbl = (addr_t *)pgd_root[pgd_idx];
-  mm->p4d = p4d_tbl; // FIX: Link P4D back to mm_struct
+  mm->p4d = p4d_tbl;
 
   if (p4d_tbl[p4d_idx] == 0) {
     if (!alloc) return NULL;
@@ -90,7 +90,7 @@ static addr_t *get_pte(struct mm_struct *mm, addr_t pgn, int alloc) {
     if (!p4d_tbl[p4d_idx]) return NULL;
   }
   addr_t *pud_tbl = (addr_t *)p4d_tbl[p4d_idx];
-  mm->pud = pud_tbl; // FIX: Link PUD back to mm_struct
+  mm->pud = pud_tbl;
 
   if (pud_tbl[pud_idx] == 0) {
     if (!alloc) return NULL;
@@ -98,7 +98,7 @@ static addr_t *get_pte(struct mm_struct *mm, addr_t pgn, int alloc) {
     if (!pud_tbl[pud_idx]) return NULL;
   }
   addr_t *pmd_tbl = (addr_t *)pud_tbl[pud_idx];
-  mm->pmd = pmd_tbl; // FIX: Link PMD back to mm_struct
+  mm->pmd = pmd_tbl;
 
   if (pmd_tbl[pmd_idx] == 0) {
     if (!alloc) return NULL;
@@ -106,7 +106,7 @@ static addr_t *get_pte(struct mm_struct *mm, addr_t pgn, int alloc) {
     if (!pmd_tbl[pmd_idx]) return NULL;
   }
   addr_t *pt_tbl = (addr_t *)pmd_tbl[pmd_idx];
-  mm->pt = pt_tbl; // FIX: Link PT back to mm_struct
+  mm->pt = pt_tbl;
 
   return &pt_tbl[pt_idx];
 }
@@ -246,27 +246,35 @@ addr_t alloc_pages_range(struct pcb_t *caller, int req_pgnum,
   struct framephy_struct *newfp = NULL;
   struct framephy_struct *tail = NULL;
   *frm_lst = NULL;
-  int max_ram_frames = (caller->krnl->mram->maxsz) >> PAGING64_ADDR_PT_SHIFT;
-  if (req_pgnum > max_ram_frames) return -3000;
+
+  int max_ram_frames = caller->krnl->mram->maxsz / PAGING64_PAGESZ;
+  if (req_pgnum > max_ram_frames)
+    return -3000;
 
   for (int pgit = 0; pgit < req_pgnum; pgit++) {
     if (MEMPHY_get_freefp(caller->krnl->mram, &fpn) != 0) {
+      /* RAM full — evict a victim page to swap */
       addr_t victim_pgn, swpfpn;
       if (find_victim_page(caller->mm, &victim_pgn) != 0)
-        return -3000;
+        goto fail;
       if (MEMPHY_get_freefp(caller->krnl->active_mswp, &swpfpn) != 0)
-        return -3000;
-      fpn = PAGING_FPN(pte_get_entry(caller, victim_pgn));
+        goto fail;
+      fpn = PAGING64_FPN(pte_get_entry(caller, victim_pgn));
       __swap_cp_page(caller->krnl->mram, fpn, caller->krnl->active_mswp,
                      swpfpn);
       pte_set_swap(caller, victim_pgn, 0, swpfpn);
     }
+
+    /* used_fp_list already updated by MEMPHY_get_freefp — just set owner */
+    MEMPHY_set_fp_owner(caller->krnl->mram, fpn, caller->mm);
+
     newfp = malloc(sizeof(struct framephy_struct));
     if (!newfp)
-      return -3000;
+      goto fail;
     newfp->fpn = fpn;
     newfp->fp_next = NULL;
     newfp->owner = caller->mm;
+
     if (*frm_lst == NULL) {
       *frm_lst = newfp;
       tail = newfp;
@@ -276,6 +284,15 @@ addr_t alloc_pages_range(struct pcb_t *caller, int req_pgnum,
     }
   }
   return 0;
+
+fail:
+  /* Free the partial frame list to avoid leaks */
+  while (*frm_lst) {
+    struct framephy_struct *next = (*frm_lst)->fp_next;
+    free(*frm_lst);
+    *frm_lst = next;
+  }
+  return -3000;
 }
 
 addr_t krnl_alloc_pages_range(struct pcb_t *caller, int req_pgnum,
@@ -291,18 +308,14 @@ addr_t krnl_alloc_pages_range(struct pcb_t *caller, int req_pgnum,
  */
 addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
                   addr_t mapstart, int incpgnum, struct vm_rg_struct *ret_rg) {
-  /*@bksysnet: author provides a feasible solution of getting frames
-   *FATAL logic in here, wrong behaviour if we have not enough page
-   *i.e. we request 1000 frames meanwhile our RAM has size of 3 frames
-   *Don't try to perform that case in this simple work, it will result
-   *in endless procedure of swap-off to get frame and we have not provide
-   *duplicate control mechanism, keep it simple
-   */
-  struct framephy_struct *frm_lst = NULL;
-  addr_t ret_alloc = 0;
-  ret_alloc = alloc_pages_range(caller, incpgnum, &frm_lst);
-  if (ret_alloc < 0) return -1;
-  vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg);
+  ret_rg->rg_start = mapstart;
+	ret_rg->rg_end = mapstart + (incpgnum * PAGING64_PAGESZ);
+  for (int pgit = 0; pgit < incpgnum; pgit++) {
+		addr_t current_vaddr = mapstart + (pgit * PAGING64_PAGESZ);
+		addr_t pgn = PAGING64_PGN(current_vaddr);
+		addr_t *pte = get_pte(caller->mm, pgn, 1);
+		if (pte) *pte = 0; // Initialize as Not Present
+	}
   return 0;
 }
 
@@ -334,9 +347,9 @@ int __swap_cp_page(struct memphy_struct *mpsrc, addr_t srcfpn,
                    struct memphy_struct *mpdst, addr_t dstfpn) {
   int cellidx;
   addr_t addrsrc, addrdst;
-  for (cellidx = 0; cellidx < PAGING_PAGESZ; cellidx++) {
-    addrsrc = srcfpn * PAGING_PAGESZ + cellidx;
-    addrdst = dstfpn * PAGING_PAGESZ + cellidx;
+  for (cellidx = 0; cellidx < PAGING64_PAGESZ; cellidx++) {
+    addrsrc = srcfpn * PAGING64_PAGESZ + cellidx;
+    addrdst = dstfpn * PAGING64_PAGESZ + cellidx;
 
     BYTE data;
     MEMPHY_read(mpsrc, addrsrc, &data);

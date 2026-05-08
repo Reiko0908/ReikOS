@@ -190,6 +190,7 @@ int buddy_free(struct buddy_system *bs, int order, int fpn);
 int MEMPHY_get_freefp(struct memphy_struct *mp, addr_t *fpn);
 int MEMPHY_put_freefp(struct memphy_struct *mp, addr_t fpn);
 int MEMPHY_get_contiguous_freefp(struct memphy_struct *mp, int req_pgnum, addr_t *retfpn);
+int MEMPHY_set_fp_owner(struct memphy_struct *mp, addr_t fpn, void *owner);
 int MEMPHY_read(struct memphy_struct * mp, addr_t addr, BYTE *value);
 int MEMPHY_write(struct memphy_struct * mp, addr_t addr, BYTE data);
 int MEMPHY_format(struct memphy_struct *mp, int pagesz);
