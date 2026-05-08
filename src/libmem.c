@@ -77,7 +77,7 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
     pthread_mutex_unlock(&mmvm_lock);
     return -1;
   }
-
+ 
   /* TODO get_free_vmrg_area FAILED handle the region management (Fig.6)*/
   struct vm_rg_struct rgnode;
   rgnode.mode_bit = 1;
@@ -87,18 +87,18 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
     caller->mm->symrgtbl[rgid].mode_bit = rgnode.mode_bit;
     caller->mm->symrgtbl[rgid].vmaid = rgnode.vmaid;
     *alloc_addr = rgnode.rg_start;
-
+ 
     pthread_mutex_unlock(&mmvm_lock);
     return 0;
   }
-
+ 
   struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
   if (!cur_vma) {
     pthread_mutex_unlock(&mmvm_lock);
     return -1;
   }
   int old_sbrk = cur_vma->sbrk;
-
+ 
   /*Attempt to increate limit to get space */
   int inc_sz = 0;
 #ifdef MM64
@@ -113,20 +113,20 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
   arg_t a2 = vmaid;
   arg_t a3 = inc_sz;
   libsyscall(caller, 17, a1, a2, a3); /* SYSCALL 17 sys_memmap */
-
+ 
   /* Failed: Out of memory */
   if (cur_vma->sbrk == old_sbrk) {
     pthread_mutex_unlock(&mmvm_lock);
     return -1; 
   }
-
+ 
   /*Successful increase limit */
   caller->mm->symrgtbl[rgid].rg_start = old_sbrk;
   caller->mm->symrgtbl[rgid].rg_end = old_sbrk + size;
   caller->mm->symrgtbl[rgid].mode_bit = 1;
   caller->mm->symrgtbl[rgid].vmaid = cur_vma->vm_id;
   *alloc_addr = old_sbrk;
-
+ 
   /* Fragmentation recovery */
   if (old_sbrk + size < cur_vma->sbrk) {
     struct vm_rg_struct *free_tail_rg = malloc(sizeof(struct vm_rg_struct));
@@ -139,10 +139,22 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
       /* Enlist the new region */
       enlist_vm_freerg_list(caller->mm, free_tail_rg);
     }
+  } else {
+    /* Exact fit: update the stale dummy [0,0] node in the free list
+     * to reflect the current sbrk so the VMA free region prints correctly */
+    struct vm_rg_struct *rg = cur_vma->vm_freerg_list;
+    while (rg) {
+      if (rg->rg_start == rg->rg_end && rg->rg_start != cur_vma->sbrk) {
+        rg->rg_start = cur_vma->sbrk;
+        rg->rg_end   = cur_vma->sbrk;
+      }
+      rg = rg->rg_next;
+    }
   }
   pthread_mutex_unlock(&mmvm_lock);
   return 0;
 }
+
 
 /*__free - remove a region memory
  *@caller: caller
