@@ -248,33 +248,48 @@ addr_t alloc_pages_range(struct pcb_t *caller, int req_pgnum,
   *frm_lst = NULL;
 
   int max_ram_frames = caller->krnl->mram->maxsz / PAGING64_PAGESZ;
-  if (req_pgnum > max_ram_frames)
-    return -3000;
+  if (req_pgnum > max_ram_frames) return -3000;
 
   for (int pgit = 0; pgit < req_pgnum; pgit++) {
     if (MEMPHY_get_freefp(caller->krnl->mram, &fpn) != 0) {
       /* RAM full — evict a victim page to swap */
       addr_t victim_pgn, swpfpn;
-      if (find_victim_page(caller->mm, &victim_pgn) != 0)
-        goto fail;
-      if (MEMPHY_get_freefp(caller->krnl->active_mswp, &swpfpn) != 0)
-        goto fail;
+      if (find_victim_page(caller->mm, &victim_pgn) != 0) {
+        while (*frm_lst) {
+          struct framephy_struct *next = (*frm_lst)->fp_next;
+          free(*frm_lst);
+          *frm_lst = next;
+        }
+        return -3000;
+      }
+
+      if (MEMPHY_get_freefp(caller->krnl->active_mswp, &swpfpn) != 0) {
+        while (*frm_lst) {
+          struct framephy_struct *next = (*frm_lst)->fp_next;
+          free(*frm_lst);
+          *frm_lst = next;
+        }
+        return -3000;
+      }
+
       fpn = PAGING64_FPN(pte_get_entry(caller, victim_pgn));
-      __swap_cp_page(caller->krnl->mram, fpn, caller->krnl->active_mswp,
-                     swpfpn);
+      __swap_cp_page(caller->krnl->mram, fpn, caller->krnl->active_mswp, swpfpn);
       pte_set_swap(caller, victim_pgn, 0, swpfpn);
     }
-
-    /* used_fp_list already updated by MEMPHY_get_freefp — just set owner */
     MEMPHY_set_fp_owner(caller->krnl->mram, fpn, caller->mm);
 
     newfp = malloc(sizeof(struct framephy_struct));
-    if (!newfp)
-      goto fail;
+    if (!newfp) {
+      while (*frm_lst) {
+        struct framephy_struct *next = (*frm_lst)->fp_next;
+        free(*frm_lst);
+        *frm_lst = next;
+      }
+      return -3000;
+    }
     newfp->fpn = fpn;
     newfp->fp_next = NULL;
     newfp->owner = caller->mm;
-
     if (*frm_lst == NULL) {
       *frm_lst = newfp;
       tail = newfp;
@@ -284,15 +299,6 @@ addr_t alloc_pages_range(struct pcb_t *caller, int req_pgnum,
     }
   }
   return 0;
-
-fail:
-  /* Free the partial frame list to avoid leaks */
-  while (*frm_lst) {
-    struct framephy_struct *next = (*frm_lst)->fp_next;
-    free(*frm_lst);
-    *frm_lst = next;
-  }
-  return -3000;
 }
 
 addr_t krnl_alloc_pages_range(struct pcb_t *caller, int req_pgnum,
