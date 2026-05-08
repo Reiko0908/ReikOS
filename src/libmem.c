@@ -552,7 +552,7 @@ addr_t __kmalloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size,
   return 0;
 }
 
-int __slab_alloc(struct pcb_t *caller, struct kmem_cache_pool_struct *pool) {
+int __slab_alloc(struct pcb_t *caller, struct kcache_pool_struct *pool) {
   int slab_min_objs = 8;
   addr_t req_size = (addr_t)(pool->size * slab_min_objs + pool->align);
   addr_t slab_size = PAGING64_PAGE_ALIGNSZ(req_size);
@@ -592,7 +592,8 @@ int __slab_alloc(struct pcb_t *caller, struct kmem_cache_pool_struct *pool) {
 
   pthread_mutex_lock(&mmvm_lock);
   new_slab->next = pool->slabs;
-  pool->slabs    = new_slab;
+  pool->slabs = new_slab;
+  pool->storage = 0;
   pthread_mutex_unlock(&mmvm_lock);
   return 0;
 }
@@ -610,14 +611,14 @@ int libkmem_cache_pool_create(struct pcb_t *caller, uint32_t size,
     pthread_mutex_unlock(&mmvm_lock);
     return -1;
   }
-  struct kcache_pool_struct *pool = &caller->krnl->kcpooltbl[cache_pool_id];
+  struct kcache_pool_struct *pool = &caller->krnl->mm->kcpooltbl[cache_pool_id];
   if (align > 0 && size % align != 0)
     size += align - (size % align);
   
   pool->size = size;
   pool->align = align;
   pool->slabs = NULL;
-  pool->slab_count = (addr_t)-1;
+  pool->storage = (addr_t) -1;
   pthread_mutex_unlock(&mmvm_lock);
   return __slab_alloc(caller, pool);
 }
@@ -633,8 +634,9 @@ int libkmem_cache_alloc(struct pcb_t *proc, uint32_t cache_pool_id,
   /* TODO: provide OS level management
    *       and forward the request to helper
    */
-  addr_t addr = __kmem_cache_alloc(proc, 0, reg_index, cache_pool_id, &addr);
-  if (addr != 0) return -1;
+  addr_t addr;
+  int val = __kmem_cache_alloc(proc, 0, reg_index, cache_pool_id, &addr);
+  if (val != 0) return -1;
   proc->regs[reg_index] = addr;
   return 0;
 }
@@ -657,9 +659,9 @@ addr_t __kmem_cache_alloc(struct pcb_t *caller, int vmaid, int rgid,
     return (addr_t)-1;
   }
 
-  struct kcache_pool_struct *pool = &caller->krnl->kcpooltbl[cache_pool_id];
+  struct kcache_pool_struct *pool = &caller->krnl->mm->kcpooltbl[cache_pool_id];
   struct slab_struct *slab = NULL;
-  while (true) {
+  while (1) {
     slab = pool->slabs;
     while (slab != NULL && slab->storage == (addr_t)-1) {
       slab = slab->next;
@@ -673,10 +675,10 @@ addr_t __kmem_cache_alloc(struct pcb_t *caller, int vmaid, int rgid,
   *alloc_addr   = slab->free_list[free_idx].addr;
   slab->storage = (addr_t)slab->free_list[free_idx].next;
 
-  mm->symrgtbl[rgid].rg_start  = *alloc_addr;
-  mm->symrgtbl[rgid].rg_end    = *alloc_addr + (addr_t)pool->size;
-  mm->symrgtbl[rgid].vmaid     = vmaid;
-  mm->symrgtbl[rgid].mode_bit  = 0;
+  krnl_mm->symrgtbl[rgid].rg_start  = *alloc_addr;
+  krnl_mm->symrgtbl[rgid].rg_end    = *alloc_addr + (addr_t)pool->size;
+  krnl_mm->symrgtbl[rgid].vmaid     = vmaid;
+  krnl_mm->symrgtbl[rgid].mode_bit  = 0;
 
   pthread_mutex_unlock(&mmvm_lock);
   return 0;
@@ -717,8 +719,6 @@ int libkmem_copy_to_user(struct pcb_t *caller, uint32_t source,
   }
   return 0;
 }
-}
-
 /*__read_kernel_mem - read value in kernel region memory
  *@caller: caller
  *@vmaid: ID vm area to alloc memory region
@@ -729,9 +729,13 @@ int libkmem_copy_to_user(struct pcb_t *caller, uint32_t source,
 int __read_kernel_mem(struct pcb_t *caller, int vmaid, int rgid, addr_t offset,
                       BYTE *data) {
   /* TODO: provide OS memory operator for kernel memory region */
+  pthread_mutex_lock(&mmvm_lock);
   struct vm_rg_struct *currg = get_symrg_byid(caller->krnl->mm, rgid);
   struct vm_area_struct *cur_vma = get_vma_by_num(caller->krnl->mm, vmaid);
-  if (!currg || !cur_vma) return -1;
+  if (!currg || !cur_vma) {
+    pthread_mutex_unlock(&mmvm_lock);
+    return -1;
+  }
   if (currg->rg_start == 0 && currg->rg_end == 0){
     pthread_mutex_unlock(&mmvm_lock);
     return -1;
@@ -755,9 +759,13 @@ int __read_kernel_mem(struct pcb_t *caller, int vmaid, int rgid, addr_t offset,
 int __write_kernel_mem(struct pcb_t *caller, int vmaid, int rgid, addr_t offset,
                        BYTE value) {
   /* TODO: provide OS memory operator for kernel memory region */
+  pthread_mutex_lock(&mmvm_lock);
   struct vm_rg_struct *currg = get_symrg_byid(caller->krnl->mm, rgid);
   struct vm_area_struct *cur_vma = get_vma_by_num(caller->krnl->mm, vmaid);
-  if (!currg || !cur_vma) return -1;
+  if (!currg || !cur_vma) {
+    pthread_mutex_unlock(&mmvm_lock);
+    return -1;
+  }
   if (currg->rg_start == 0 && currg->rg_end == 0){
     pthread_mutex_unlock(&mmvm_lock);
     return -1;
@@ -766,7 +774,7 @@ int __write_kernel_mem(struct pcb_t *caller, int vmaid, int rgid, addr_t offset,
     pthread_mutex_unlock(&mmvm_lock);
     return -1;
   }
-  krnl_pg_setval(caller->krnl->mm, currg->rg_start + offset, data, caller);
+  krnl_pg_setval(caller->krnl->mm, currg->rg_start + offset, value, caller);
   pthread_mutex_unlock(&mmvm_lock);
   return 0;
 }
@@ -814,7 +822,7 @@ int free_pcb_memph(struct pcb_t *caller) {
       pte = pte_get_entry(caller, pgn);
       if (pte == 0) continue;
       if (PAGING_PAGE_PRESENT(pte)) {
-        fpn = PAGING64_FPN(pte);
+        fpn = PAGING_FPN(pte);
         MEMPHY_put_freefp(caller->krnl->mram, fpn);
       } else {
         fpn = PAGING_SWP(pte);

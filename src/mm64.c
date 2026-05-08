@@ -279,34 +279,11 @@ addr_t alloc_pages_range(struct pcb_t *caller, int req_pgnum,
 }
 
 addr_t krnl_alloc_pages_range(struct pcb_t *caller, int req_pgnum,
-                               struct framephy_struct **frm_lst)
-{
-  if (!caller || !caller->krnl || !caller->krnl->mram) return -1;
-  addr_t base_fpn;
-  if (MEMPHY_get_contiguous_freefp(caller->krnl->mram, req_pgnum, &base_fpn) != 0)
+                              struct framephy_struct **frm_lst) {
+  if (!caller || !caller->krnl || !caller->krnl->mram)
     return -1;
-
-  struct framephy_struct *head = NULL;
-  struct framephy_struct *tail = NULL;
-  for (int i = 0; i < req_pgnum; i++) {
-    struct framephy_struct *node = malloc(sizeof(struct framephy_struct));
-    if (!node) {
-      MEMPHY_put_contiguous_freefp(caller->krnl->mram, base_fpn, req_pgnum);
-      while (head) {
-        struct framephy_struct *nx = head->fp_next;
-        free(head);
-        head = nx;
-      }
-      return -1;
-    }
-    node->fpn = base_fpn + i;
-    node->fp_next = NULL;
-    node->owner   = caller->krnl->mm;
-    if (!head) { head = node; tail = node; }
-    else {tail->fp_next = node; tail = node; }
-  }
-  *frm_lst = head;
-  return 0;
+  addr_t base_fpn;
+  return MEMPHY_get_contiguous_freefp(caller->krnl->mram, req_pgnum, &base_fpn);
 }
 
 /*
@@ -407,8 +384,10 @@ static int __init_mm(struct mm_struct *mm, addr_t *pgd_root, addr_t vm_base_addr
 }
 
 int init_mm(struct mm_struct *mm, struct pcb_t *caller) {
-  addr_t *pgd_root = (addr_t *)calloc(512, sizeof(addr_t));
-  __init_mm(mm, pgd_root, 0);
+  addr_t *pgd = aligned_alloc(4096, 512 * sizeof(addr_t));
+  if (!pgd) return -1;
+  memset(pgd, 0, 4096);
+  __init_mm(mm, pgd, 0);
   mm->kcpooltbl = NULL;
   return 0;
 }
@@ -548,7 +527,7 @@ int print_pgtbl(struct pcb_t *caller, addr_t start, addr_t end) {
   printf("Page table dump [pgn %lu .. %lu]:\n", (unsigned long)pgn_start,
          (unsigned long)pgn_end);
   for (addr_t pgn = pgn_start; pgn < pgn_end; ++pgn) {
-    addr_t *pte_ptr = get_pte(mm->pgd, pgn, 0);
+    addr_t *pte_ptr = get_pte(mm, pgn, 0);
     if (pte_ptr == NULL || *pte_ptr == 0)
       continue;
     addr_t pte = *pte_ptr;

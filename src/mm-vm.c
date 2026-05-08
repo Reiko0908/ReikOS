@@ -143,14 +143,6 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz) {
     free(area);
     return -1;
   }
-
-  struct vm_rg_struct *free_rg = malloc(sizeof(struct vm_rg_struct));
-  if (free_rg) {
-    free_rg->rg_start = newrg.rg_start;
-    free_rg->rg_end   = newrg.rg_end;
-    free_rg->rg_next  = NULL;
-    enlist_vm_freerg_list(caller->mm, free_rg);
-  }
   free(area);
   return 0;
 }
@@ -189,14 +181,7 @@ int krnl_inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz) {
     free(area);
     return -1;
   }
-
-  struct vm_rg_struct *free_rg = malloc(sizeof(struct vm_rg_struct));
-  if (free_rg) {
-    free_rg->rg_start = newrg.rg_start;
-    free_rg->rg_end   = newrg.rg_end;
-    free_rg->rg_next  = NULL;
-    enlist_vm_freerg_list(caller->krnl->mm, free_rg);
-  }
+  
   free(area);
   return 0;
 }
