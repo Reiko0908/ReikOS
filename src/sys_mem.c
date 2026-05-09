@@ -22,6 +22,17 @@
 
 //typedef char BYTE;
 
+static struct pcb_t *get_pcb_by_pid(struct queue_t *q, uint32_t pid)
+{
+   if (q == NULL) return NULL;
+   for (int i = 0; i < q->size; i++) {
+      if (q->proc[i] != NULL && q->proc[i]->pid == pid) {
+         return q->proc[i];
+      }
+   }
+   return NULL;
+}
+
 int __sys_memmap(struct krnl_t *krnl, uint32_t pid, struct sc_regs* regs)
 {
    int memop = regs->a1;
@@ -30,25 +41,9 @@ int __sys_memmap(struct krnl_t *krnl, uint32_t pid, struct sc_regs* regs)
 
    if (!krnl || !regs) return -1;
 
-   struct queue_t *running_list = krnl->running_list;
-   
-   if (running_list != NULL && running_list->size > 0) {
-      for (int i = 0; i < running_list->size; i++) {
-         if (running_list->proc[i] != NULL && running_list->proc[i]->pid == pid) {
-            caller = running_list->proc[i];
-            break;
-         }
-      }
-   }
-   
-   if (caller == NULL && krnl->ready_queue != NULL && krnl->ready_queue->size > 0) {
-      for (int i = 0; i < krnl->ready_queue->size; i++) {
-         if (krnl->ready_queue->proc[i] != NULL && krnl->ready_queue->proc[i]->pid == pid) {
-            caller = krnl->ready_queue->proc[i];
-            break;
-         }
-      }
-   }
+   caller = get_pcb_by_pid(krnl->running_list, pid);
+   if (caller == NULL)
+      caller = get_pcb_by_pid(krnl->ready_queue, pid);
    
    if (caller == NULL) {
       printf("[ERROR] cannot resolve pid %u in kernel process lists\n", pid);
