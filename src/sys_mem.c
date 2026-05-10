@@ -31,7 +31,7 @@ int __sys_memmap(struct krnl_t *krnl, uint32_t pid, struct sc_regs* regs)
 
    if (!krnl || !regs) return -1;
 
-   caller= find_proc_by_id(pid);
+   caller= find_proc_by_pid(pid);
    
    if (caller == NULL) {
       printf("[ERROR] cannot resolve pid %u in kernel process lists\n", pid);
