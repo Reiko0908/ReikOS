@@ -20,10 +20,7 @@
 #include "../include/mm.h"
 #include "../include/mm64.h"
 
-/* =======================================================================
- * Internal helpers for free_fp_list / used_fp_list
- * ======================================================================= */
-static int fp_list_push(struct framephy_struct **head, addr_t fpn, int order)
+static int fp_list_push(struct framephy_struct **head, addr_t fpn, int order) 
 {
     struct framephy_struct *node = malloc(sizeof(struct framephy_struct));
     if (!node) return -1;
@@ -66,7 +63,6 @@ static void fp_list_free_all(struct framephy_struct **head)
 /* =======================================================================
  * Buddy Allocator
  * ======================================================================= */
-
 int buddy_init(struct buddy_system *bs, int total_frames) {
   if (!bs || total_frames <= 0) return -1;
   memset(bs->free_lists, 0, sizeof(bs->free_lists));
@@ -144,7 +140,6 @@ int buddy_free(struct buddy_system *bs, int order, int fpn) {
 /* =======================================================================
  * MEMPHY device I/O
  * ======================================================================= */
-
 int MEMPHY_mv_csr(struct memphy_struct *mp, addr_t offset)
 {
   int numstep = 0;
@@ -158,7 +153,7 @@ int MEMPHY_mv_csr(struct memphy_struct *mp, addr_t offset)
 
 int MEMPHY_seq_read(struct memphy_struct *mp, addr_t addr, BYTE *value)
 {
-  if (mp == NULL) return -1;
+  if (!mp) return -1;
   MEMPHY_mv_csr(mp, addr);
   *value = (BYTE)mp->storage[addr];
   return 0;
@@ -166,19 +161,22 @@ int MEMPHY_seq_read(struct memphy_struct *mp, addr_t addr, BYTE *value)
 
 int MEMPHY_read(struct memphy_struct *mp, addr_t addr, BYTE *value)
 {
-  if (mp == NULL) return -1;
+  if (!mp) return -1;
+  if (addr >= mp->maxsz) return -1;
+  int res = 0;
+
   pthread_mutex_lock(&mp->lock);
   if (mp->rdmflg)
     *value = mp->storage[addr];
   else
-    return MEMPHY_seq_read(mp, addr, value);
+    res = MEMPHY_seq_read(mp, addr, value);
   pthread_mutex_unlock(&mp->lock);
-  return 0;
+  return res;
 }
 
 int MEMPHY_seq_write(struct memphy_struct *mp, addr_t addr, BYTE value)
 {
-  if (mp == NULL) return -1;
+  if (!mp) return -1;
   MEMPHY_mv_csr(mp, addr);
   mp->storage[addr] = value;
   return 0;
@@ -186,14 +184,17 @@ int MEMPHY_seq_write(struct memphy_struct *mp, addr_t addr, BYTE value)
 
 int MEMPHY_write(struct memphy_struct *mp, addr_t addr, BYTE data)
 {
-  if (mp == NULL) return -1;
+  if (!mp) return -1;
+  if (addr >= mp->maxsz) return -1;
+  int res = 0;
+
   pthread_mutex_lock(&mp->lock);
   if (mp->rdmflg)
     mp->storage[addr] = data;
   else
-    return MEMPHY_seq_write(mp, addr, data);
+    res = MEMPHY_seq_write(mp, addr, data);
   pthread_mutex_unlock(&mp->lock);
-  return 0;
+  return res;
 }
 
 /* =======================================================================
@@ -324,10 +325,6 @@ int MEMPHY_set_fp_owner(struct memphy_struct *mp, addr_t fpn, void *owner)
   return -1;
 }
 
-/* =======================================================================
- * Diagnostics
- * ======================================================================= */
-
 int MEMPHY_dump(struct memphy_struct *mp)
 {
   if (!mp || !mp->storage) return -1;
@@ -338,10 +335,6 @@ int MEMPHY_dump(struct memphy_struct *mp)
   printf("\n");
   return 0;
 }
-
-/* =======================================================================
- * Initialisation
- * ======================================================================= */
 
 int init_memphy(struct memphy_struct *mp, addr_t max_size, int randomflg)
 {
