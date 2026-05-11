@@ -69,42 +69,24 @@ int get_pd_from_pagenum(addr_t pgn, addr_t *pgd, addr_t *p4d, addr_t *pud,
 /*
  * get_pte - Walk 5-level page table and return target PTE
  */
-static addr_t *get_pte(struct mm_struct *mm, addr_t pgn, int alloc) {
+static addr_t *get_pte(struct mm_struct *mm, addr_t pgn) {
   addr_t pgd_idx, p4d_idx, pud_idx, pmd_idx, pt_idx;
   get_pd_from_pagenum(pgn, &pgd_idx, &p4d_idx, &pud_idx, &pmd_idx, &pt_idx);
 
-  // Grab the PGD root directly from the passed mm_struct
   addr_t *pgd_root = mm->pgd;
-
-  if (pgd_root[pgd_idx] == 0) {
-    if (!alloc) return NULL;
-    pgd_root[pgd_idx] = (addr_t)calloc(512, sizeof(addr_t));
-    if (!pgd_root[pgd_idx]) return NULL;
-  }
+  if (pgd_root[pgd_idx] == 0) return NULL;
   addr_t *p4d_tbl = (addr_t *)pgd_root[pgd_idx];
   mm->p4d = p4d_tbl;
 
-  if (p4d_tbl[p4d_idx] == 0) {
-    if (!alloc) return NULL;
-    p4d_tbl[p4d_idx] = (addr_t)calloc(512, sizeof(addr_t));
-    if (!p4d_tbl[p4d_idx]) return NULL;
-  }
+  if (p4d_tbl[p4d_idx] == 0) return NULL;
   addr_t *pud_tbl = (addr_t *)p4d_tbl[p4d_idx];
   mm->pud = pud_tbl;
 
-  if (pud_tbl[pud_idx] == 0) {
-    if (!alloc) return NULL;
-    pud_tbl[pud_idx] = (addr_t)calloc(512, sizeof(addr_t));
-    if (!pud_tbl[pud_idx]) return NULL;
-  }
+  if (pud_tbl[pud_idx] == 0) return NULL;
   addr_t *pmd_tbl = (addr_t *)pud_tbl[pud_idx];
   mm->pmd = pmd_tbl;
 
-  if (pmd_tbl[pmd_idx] == 0) {
-    if (!alloc) return NULL;
-    pmd_tbl[pmd_idx] = (addr_t)calloc(512, sizeof(addr_t));
-    if (!pmd_tbl[pmd_idx]) return NULL;
-  }
+  if (pmd_tbl[pmd_idx] == 0) return NULL;
   addr_t *pt_tbl = (addr_t *)pmd_tbl[pmd_idx];
   mm->pt = pt_tbl;
 
@@ -116,7 +98,7 @@ static addr_t *get_pte(struct mm_struct *mm, addr_t pgn, int alloc) {
  */
 int pte_set_swap(struct pcb_t *caller, addr_t pgn, int swptyp, addr_t swpoff) {
   // Pass caller->mm to track pointers
-  addr_t *pte = get_pte(caller->mm, pgn, 1);
+  addr_t *pte = get_pte(caller->mm, pgn);
   if (!pte) return -1;
 
   CLRBIT(*pte, PAGING_PTE_PRESENT_MASK);
@@ -130,7 +112,7 @@ int pte_set_swap(struct pcb_t *caller, addr_t pgn, int swptyp, addr_t swpoff) {
  * __pte_set_fpn - Set PTE entry for a mapped (on-line) user page
  */
 static int __pte_set_fpn(struct mm_struct *mm, addr_t pgn, addr_t fpn) {
-  addr_t *pte = get_pte(mm, pgn, 1);
+  addr_t *pte = get_pte(mm, pgn);
   if (!pte) return -1;
 
   SETBIT(*pte, PAGING_PTE_PRESENT_MASK); /* IS in RAM */
@@ -154,7 +136,7 @@ int krnl_pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn) {
  * pte_get_entry - Retrieve the raw User PTE value
  */
 static uint32_t __pte_get_entry(struct mm_struct *mm, addr_t pgn) {
-  addr_t *pte = get_pte(mm, pgn, 0);
+  addr_t *pte = get_pte(mm, pgn);
   return pte ? (uint32_t)(*pte) : 0;
 }
 
@@ -172,7 +154,7 @@ uint32_t krnl_pte_get_entry(struct pcb_t *caller, addr_t pgn) {
  * pte_set_entry - Directly overwrite a User PTE with a raw value
  */
 static int __pte_set_entry(struct mm_struct *mm, addr_t pgn, uint32_t pte_val) {
-  addr_t *pte = get_pte(mm, pgn, 1);
+  addr_t *pte = get_pte(mm, pgn);
   if (!pte) return -1;
   *pte = pte_val;
   return 0;
@@ -199,7 +181,7 @@ int vmap_pgd_memset(struct pcb_t *caller, addr_t addr, int pgnum)
 
 	for (int pgit = 0; pgit < pgnum; pgit++) {
     addr_t pgn = PAGING64_PGN(addr + (pgit << PAGING64_ADDR_PT_SHIFT));
-		addr_t *pte = get_pte(caller->mm, pgn, 1);
+		addr_t *pte = get_pte(caller->mm, pgn);
 		if (pte) *pte = pattern;
 	}
 	return 0;
@@ -246,7 +228,6 @@ addr_t alloc_pages_range(struct pcb_t *caller, int req_pgnum,
   struct framephy_struct *newfp = NULL;
   struct framephy_struct *tail = NULL;
   *frm_lst = NULL;
-
   int max_ram_frames = caller->krnl->mram->maxsz / PAGING64_PAGESZ;
   if (req_pgnum > max_ram_frames) return -3000;
 
@@ -314,14 +295,22 @@ addr_t krnl_alloc_pages_range(struct pcb_t *caller, int req_pgnum,
  */
 addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
                   addr_t mapstart, int incpgnum, struct vm_rg_struct *ret_rg) {
-  ret_rg->rg_start = mapstart;
-	ret_rg->rg_end = mapstart + (incpgnum * PAGING64_PAGESZ);
-  for (int pgit = 0; pgit < incpgnum; pgit++) {
-		addr_t current_vaddr = mapstart + (pgit * PAGING64_PAGESZ);
-		addr_t pgn = PAGING64_PGN(current_vaddr);
-		addr_t *pte = get_pte(caller->mm, pgn, 1);
-		if (pte) *pte = 0; // Initialize as Not Present
-	}
+  if (!caller || !caller->krnl || !caller->krnl->mram) return -1;
+  struct framephy_struct *frm_lst = NULL;
+  int ret_alloc = alloc_pages_range(caller, incpgnum, &frm_lst);
+  if (ret_alloc != 0 || frm_lst == NULL) return -1;
+
+  if (vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg) < 0) {
+    struct framephy_struct *fpit = frm_lst;
+    while (fpit != NULL) {
+      struct framephy_struct *next = fpit->fp_next;
+      MEMPHY_put_freefp(caller->krnl->mram, fpit->fpn);
+      free(fpit);
+      fpit = next;
+    }
+    return -1;
+  }
+  ret_rg->mode_bit = 1;
   return 0;
 }
 
@@ -403,9 +392,21 @@ static int __init_mm(struct mm_struct *mm, addr_t *pgd_root, addr_t vm_base_addr
 }
 
 int init_mm(struct mm_struct *mm, struct pcb_t *caller) {
-  addr_t *pgd = aligned_alloc(4096, 512 * sizeof(addr_t));
-  if (!pgd) return -1;
-  memset(pgd, 0, 4096);
+  addr_t *block = (addr_t *)aligned_alloc(4096, 5 * 512 * sizeof(addr_t));
+  if (!block) return -1;
+  memset(block, 0, 5 * 512 * sizeof(addr_t));
+  
+  addr_t *pgd = block;
+  addr_t *p4d = block + 512;
+  addr_t *pud = block + 2 * 512;
+  addr_t *pmd = block + 3 * 512;
+  addr_t *pt  = block + 4 * 512;
+  
+  pgd[0] = (addr_t)p4d;
+  p4d[0] = (addr_t)pud;
+  pud[0] = (addr_t)pmd;
+  pmd[0] = (addr_t)pt;
+
   __init_mm(mm, pgd, 0);
   mm->kcpooltbl = NULL;
   return 0;
@@ -546,7 +547,7 @@ int print_pgtbl(struct pcb_t *caller, addr_t start, addr_t end) {
   printf("Page table dump [pgn %lu .. %lu]:\n", (unsigned long)pgn_start,
          (unsigned long)pgn_end);
   for (addr_t pgn = pgn_start; pgn < pgn_end; ++pgn) {
-    addr_t *pte_ptr = get_pte(mm, pgn, 0);
+    addr_t *pte_ptr = get_pte(mm, pgn);
     if (pte_ptr == NULL || *pte_ptr == 0)
       continue;
     addr_t pte = *pte_ptr;
