@@ -9,6 +9,9 @@
 
 #define MAX_PRIO 140
 
+void sched_signal_loader_done(uint64_t time);
+void sched_wait_for_loader(uint64_t time, int is_done);
+
 int queue_empty(void);
 
 void init_scheduler(void);

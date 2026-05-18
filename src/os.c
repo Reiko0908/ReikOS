@@ -1,17 +1,16 @@
-#include "cpu.h"
-#include "timer.h"
-#include "sched.h"
-#include "loader.h"
-#include "mm.h"
+#include "../include/cpu.h"
+#include "../include/timer.h"
+#include "../include/sched.h"
+#include "../include/loader.h"
+#include "../include/mm.h"
 #ifdef MM64
-#include "mm64.h"
+#include "../include/mm64.h"
 #endif
 
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <sched.h>
 
 static int time_slot;
 static int num_cpus;
@@ -47,37 +46,38 @@ struct cpu_args {
 	int id;
 };
 
-
 static void * cpu_routine(void * args) {
 	struct timer_id_t * timer_id = ((struct cpu_args*)args)->timer_id;
 	int id = ((struct cpu_args*)args)->id;
 	/* Check for new process in ready queue */
 	int time_left = 0;
 	struct pcb_t * proc = NULL;
-	/* Skip slot 0 — let the loader run first */
-	next_slot(timer_id);
+	
 	while (1) {
 		/* Check the status of current process */
 		if (proc == NULL) {
 			/* No process is running, the we load new process from
 		 	* ready queue */
+      sched_wait_for_loader(current_time(), done);
 			proc = get_proc();
 			if (proc == NULL) {
-                           next_slot(timer_id);
-                           continue; /* First load failed. skip dummy load */
-                        }
-		}else if (proc->pc == proc->code->size) {
+        next_slot(timer_id);
+        continue; /* First load failed. skip dummy load */
+      }
+		} else if (proc->pc == proc->code->size) {
 			/* The porcess has finish it job */
 			printf("\tCPU %d: Processed %2d has finished\n",
 				id ,proc->pid);
 			free(proc);
+      sched_wait_for_loader(current_time(), done);
 			proc = get_proc();
 			time_left = 0;
-		}else if (time_left == 0) {
+		} else if (time_left == 0) {
 			/* The process has done its job in current time slot */
 			printf("\tCPU %d: Put process %2d to run queue (pc=%d/%d)\n",
 				id, proc->pid, proc->pc, proc->code->size);
 			put_proc(proc);
+      sched_wait_for_loader(current_time(), done);
 			proc = get_proc();
 		}
 
@@ -86,12 +86,12 @@ static void * cpu_routine(void * args) {
 			/* No process to run, exit */
 			printf("\tCPU %d stopped\n", id);
 			break;
-		}else if (proc == NULL) {
+		} else if (proc == NULL) {
 			/* There may be new processes to run in
 			 * next time slots, just skip current slot */
 			next_slot(timer_id);
 			continue;
-		}else if (time_left == 0) {
+		} else if (time_left == 0) {
 			printf("\tCPU %d: Dispatched process %2d\n",
 				id, proc->pid);
 			time_left = time_slot;
@@ -106,6 +106,11 @@ static void * cpu_routine(void * args) {
 	}
 	detach_event(timer_id);
 	pthread_exit(NULL);
+}
+
+static void ld_next_slot(struct timer_id_t * timer_id) {
+  sched_signal_loader_done(current_time());
+  next_slot(timer_id);
 }
 
 static void * ld_routine(void * args) {
@@ -154,7 +159,7 @@ static void * ld_routine(void * args) {
 #endif
 		/* Advance time slots until we reach the process start_time */
 		while (current_time() < ld_processes.start_time[i]) {
-			next_slot(timer_id);
+			ld_next_slot(timer_id);
 		}
 #ifdef MM_PAGING
 		proc->mm = malloc(sizeof(struct mm_struct));
@@ -168,11 +173,12 @@ static void * ld_routine(void * args) {
 		add_proc(proc);
 		free(ld_processes.path[i]);
 		i++;
-		next_slot(timer_id);
+		ld_next_slot(timer_id);
 	}
 	free(ld_processes.path);
 	free(ld_processes.start_time);
 	done = 1;
+  sched_signal_loader_done(current_time());
 	detach_event(timer_id);
 	pthread_exit(NULL);
 }
@@ -306,8 +312,5 @@ int main(int argc, char * argv[]) {
 
 	/* Stop timer */
 	stop_timer();
-
 	return 0;
-
 }
-

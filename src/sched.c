@@ -16,13 +16,32 @@
 #include <stdio.h>
 static struct queue_t ready_queue;
 static struct queue_t run_queue;
-static pthread_mutex_t queue_lock;
+static pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static struct queue_t running_list;
 #ifdef MLQ_SCHED
 static struct queue_t mlq_ready_queue[MAX_PRIO];
 static int slot[MAX_PRIO];
 #endif
+
+static pthread_mutex_t loader_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t loader_cond = PTHREAD_COND_INITIALIZER;
+static int loader_time = -1;
+
+void sched_signal_loader_done(uint64_t time) {
+  pthread_mutex_lock(&loader_lock);
+  loader_time = time;
+  pthread_cond_broadcast(&loader_cond);
+  pthread_mutex_unlock(&loader_lock);
+}
+
+void sched_wait_for_loader(uint64_t time, int is_done) {
+  pthread_mutex_lock(&loader_lock);
+  while ((int)loader_time < (int)time && !is_done) {
+    pthread_cond_wait(&loader_cond, &loader_lock);
+  }
+  pthread_mutex_unlock(&loader_lock);
+}
 
 int queue_empty(void) {
 	int is_empty;
@@ -159,7 +178,6 @@ void put_mlq_proc(struct pcb_t * proc) {
 
 	/* TODO: put running proc to running_list 
 	 *       It worth to protect by a mechanism.
-	 * 
 	 */
 
 	pthread_mutex_lock(&queue_lock);
@@ -175,7 +193,6 @@ void add_mlq_proc(struct pcb_t * proc) {
 
 	/* TODO: put running proc to running_list
 	 *       It worth to protect by a mechanism.
-	 * 
 	 */
        
 	pthread_mutex_lock(&queue_lock);
@@ -201,7 +218,6 @@ struct pcb_t * get_proc(void) {
 	pthread_mutex_lock(&queue_lock);
 	/*TODO: get a process from [ready_queue].
 	 *       It worth to protect by a mechanism.
-	 * 
 	 */
 	proc = dequeue(&ready_queue);
 	if (proc != NULL)
@@ -217,7 +233,6 @@ void put_proc(struct pcb_t * proc) {
 
 	/* TODO: put running proc to running_list 
 	 *       It worth to protect by a mechanism.
-	 * 
 	 */
 
 	pthread_mutex_lock(&queue_lock);
@@ -232,7 +247,6 @@ void add_proc(struct pcb_t * proc) {
 
 	/* TODO: put running proc to running_list 
 	 *       It worth to protect by a mechanism.
-	 * 
 	 */
 
 	pthread_mutex_lock(&queue_lock);
