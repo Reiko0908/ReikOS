@@ -190,6 +190,7 @@ int buddy_free(struct buddy_system *bs, int order, int fpn);
 int MEMPHY_get_freefp(struct memphy_struct *mp, addr_t *fpn);
 int MEMPHY_put_freefp(struct memphy_struct *mp, addr_t fpn);
 int MEMPHY_get_contiguous_freefp(struct memphy_struct *mp, int req_pgnum, addr_t *retfpn);
+int MEMPHY_put_contiguous_freefp(struct memphy_struct *mp, addr_t fpn);
 int MEMPHY_set_fp_owner(struct memphy_struct *mp, addr_t fpn, void *owner);
 int MEMPHY_read(struct memphy_struct * mp, addr_t addr, BYTE *value);
 int MEMPHY_write(struct memphy_struct * mp, addr_t addr, BYTE data);
@@ -204,4 +205,7 @@ int print_list_vma(struct vm_area_struct *rg);
 
 int print_list_pgn(struct pgn_t *ip);
 int print_pgtbl(struct pcb_t *ip, addr_t start, addr_t end);
+
+int get_symrg_id_by_addr(struct mm_struct *mm, addr_t addr);
+int get_vmaid_by_addr(struct mm_struct *mm, addr_t addr);
 #endif
