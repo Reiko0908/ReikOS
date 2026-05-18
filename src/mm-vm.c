@@ -37,7 +37,7 @@ struct vm_area_struct *get_vma_by_num(struct mm_struct *mm, int vmaid)
     if ((int)pvma->vm_id == vmaid) return pvma;
     pvma = pvma->vm_next;
   }
-  return NULL; /* vmaid not found */
+  return NULL;
 }
 
 int __mm_swap_page(struct pcb_t *caller, addr_t vicfpn , addr_t swpfpn)
@@ -109,7 +109,8 @@ int krnl_validate_overlap_vm_area(struct krnl_t *krnl, int vmaid, addr_t vmastar
  *
  */
 int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz) {
-  if (!caller) return -1;
+  if (!caller)
+    return -1;
   addr_t inc_amt;
   int inc_pgn;
 #ifdef MM64
@@ -119,36 +120,25 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz) {
   inc_amt = PAGING_PAGE_ALIGNSZ(inc_sz);
   inc_pgn = (int)(inc_amt >> PAGING_ADDR_PT_SHIFT);
 #endif
-  struct vm_rg_struct *area = get_vm_area_node_at_brk(caller, vmaid, inc_sz, inc_amt);
-  if (!area) return -1;
   struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
-  if (!cur_vma) {
-    free(area);
+  if (!cur_vma) return -1;
+
+  addr_t old_end = cur_vma->vm_end;
+  cur_vma->vm_end = old_end + inc_amt;
+
+  struct vm_rg_struct newrg;
+  if (vm_map_range(caller, old_end, old_end + inc_amt, old_end, inc_pgn, &newrg) != 0) {
+    cur_vma->vm_end = old_end;
     return -1;
   }
 
-  if (validate_overlap_vm_area(caller, vmaid, area->rg_start, area->rg_end) < 0) {
-    free(area);
-    return -1;
-  }
-  addr_t old_end = cur_vma->vm_end;
-  addr_t old_sbrk = cur_vma->sbrk;
-  cur_vma->vm_end = old_end + inc_amt;
-  cur_vma->sbrk = area->rg_end;
-  
-  struct vm_rg_struct newrg;
-  if (vm_map_range(caller, area->rg_start, area->rg_end, old_end, inc_pgn, &newrg) != 0) {
-    cur_vma->vm_end = old_end;
-    cur_vma->sbrk   = old_sbrk;
-    free(area);
-    return -1;
-  }
-  free(area);
+  cur_vma->sbrk = cur_vma->vm_end;
   return 0;
 }
 
 int krnl_inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz) {
-  if (!caller->krnl) return -1;
+  if (!caller->krnl)
+    return -1;
   addr_t inc_amt;
   int inc_pgn;
 #ifdef MM64
@@ -158,31 +148,19 @@ int krnl_inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz) {
   inc_amt = PAGING_PAGE_ALIGNSZ(inc_sz);
   inc_pgn = (int)(inc_amt >> PAGING_ADDR_PT_SHIFT);
 #endif
-  struct vm_rg_struct *area = krnl_get_vm_area_node_at_brk(caller->krnl, vmaid, inc_sz, inc_amt);
-  if (!area) return -1;
   struct vm_area_struct *cur_vma = get_vma_by_num(caller->krnl->mm, vmaid);
-  if (!cur_vma) {
-    free(area);
-    return -1;
-  }
-  if (krnl_validate_overlap_vm_area(caller->krnl, vmaid, area->rg_start, area->rg_end) < 0) {
-    free(area);
-    return -1;
-  }
+  if (!cur_vma) return -1;
   addr_t old_end = cur_vma->vm_end;
-  addr_t old_sbrk = cur_vma->sbrk;
+
   cur_vma->vm_end = old_end + inc_amt;
-  cur_vma->sbrk = area->rg_end;
-  
+
   struct vm_rg_struct newrg;
-  if (vm_map_kernel(caller, area->rg_start, area->rg_end, old_end, inc_pgn, &newrg) != 0) {
+  if (krnl_vm_map_ram(caller, old_end, old_end + inc_amt, old_end, inc_pgn, &newrg) != 0) {
     cur_vma->vm_end = old_end;
-    cur_vma->sbrk   = old_sbrk;
-    free(area);
     return -1;
   }
-  
-  free(area);
+  cur_vma->vm_end = newrg.rg_end;
+  cur_vma->sbrk   = newrg.rg_end;
   return 0;
 }
 
@@ -220,5 +198,26 @@ addr_t vm_map_kernel(struct pcb_t *caller, addr_t astart, addr_t aend,
 #endif
   if (mapstart < astart || mapstart + mapsz > aend) return -1;
   return krnl_vm_map_ram(caller, astart, aend, mapstart, incpgnum, ret_rg);
+}
+
+int get_symrgid_by_addr(struct mm_struct *mm, addr_t addr) {
+  if (mm == NULL) return -1;
+  for (int i = 0; i < PAGING_MAX_SYMTBL_SZ; i++) {
+    struct vm_rg_struct *rg = &mm->symrgtbl[i];
+    if (rg->rg_start < rg->rg_end && rg->rg_start <= addr && addr < rg->rg_end)
+      return i;
+  }
+  return -1;
+}
+
+int get_vmaid_by_addr(struct mm_struct *mm, addr_t addr) {
+  if (mm == NULL) return -1;
+  struct vm_area_struct *vma = mm->mmap;
+  while (vma != NULL) {
+    if (vma->vm_start < vma->vm_end && vma->vm_start <= addr && vma->vm_end > addr)
+      return vma->vm_id;
+    vma = vma->vm_next;
+  }
+  return -1;
 }
 // #endif
