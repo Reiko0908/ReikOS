@@ -319,7 +319,17 @@ addr_t krnl_vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
   addr_t ret_alloc = krnl_alloc_pages_range(caller, incpgnum, &frm_lst);
   if (ret_alloc == (addr_t)-1 || frm_lst == NULL) return -1;
   
-  mapstart = KRNL_SPACE_BASE_ADDR + ret_alloc * PAGING64_PAGESZ;
+  mapstart = KERNEL_DYNAMIC_START + ret_alloc * PAGING64_PAGESZ;
+  if (!mm64_kernel_dynamic_range_fits(mapstart, incpgnum)) {
+    struct framephy_struct *fpit = frm_lst;
+    while (fpit != NULL) {
+      struct framephy_struct *next = fpit->fp_next;
+      MEMPHY_put_contiguous_freefp(caller->krnl->mram, fpit->fpn);
+      free(fpit);
+      fpit = next;
+    }
+    return -1;
+  }
 	if (krnl_vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg) < 0) {
 		struct framephy_struct *fpit = frm_lst;
 		while (fpit != NULL) {
@@ -417,7 +427,7 @@ int init_mm(struct mm_struct *mm, struct pcb_t *caller) {
 }
 
 int krnl_init_mm(struct mm_struct *mm, struct krnl_t *krnl) {
-  addr_t base_addr = KRNL_SPACE_BASE_ADDR;
+  addr_t base_addr = KERNEL_DYNAMIC_START;
   __init_mm(mm, krnl->krnl_pgd, base_addr);
   mm->kcpooltbl = calloc(MAX_CACHE_POOL, sizeof(struct kcache_pool_struct));
   if (!mm->kcpooltbl) return -1;

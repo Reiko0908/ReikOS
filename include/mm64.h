@@ -13,11 +13,52 @@
 #define PAGING64_MAX_PGN  (DIV_ROUND_UP(BIT_ULL(21),PAGING64_PAGESZ))
 #define PAGING64_PAGE_ALIGNSZ(sz) (DIV_ROUND_UP(sz,PAGING64_PAGESZ)*PAGING64_PAGESZ)
 
-/* CANONOCAL ADDRESS (LA57) */
-#define KRNL_SPACE_BASE_ADDR GENMASK64(63, 56)
-#define PAGING64_CANONICAL_TAG(x) (((x) & KRNL_SPACE_BASE_ADDR) >> 56)
-#define IS_KRNL_SPACE(x) (PAGING64_CANONICAL_TAG(x) == 0xFF)
-#define IS_USER_SPACE(x) (PAGING64_CANONICAL_TAG(x) == 0x00)
+/* Canonical LA57 high-byte tag (bits 63..56) */
+#define PAGING64_CANONICAL_TAG_MASK GENMASK64(63, 56)
+#define PAGING64_CANONICAL_TAG(x) (((x) & PAGING64_CANONICAL_TAG_MASK) >> 56)
+
+/*
+ * LA57 virtual memory layout
+ * User              : 0x0000000000000000 - 0x00FFFFFFFFFFFFFF (64 PB)
+ * Canonical hole    : 0x0100000000000000 - 0xFEFFFFFFFFFFFFFF (~112 PB)
+ * Kernel dynamic map: 0xFF00000000000000 - 0xFFFFFFFF7FFFFFFF (~64 PB)
+ * Kernel static text: 0xFFFFFFFF80000000 - 0xFFFFFFFFFFFFFFFF (2 GB)
+ */
+#define USER_SPACE_START          0x0000000000000000ULL
+#define USER_SPACE_END            0x00FFFFFFFFFFFFFFULL
+#define CANONICAL_HOLE_START      0x0100000000000000ULL
+#define CANONICAL_HOLE_END        0xFEFFFFFFFFFFFFFFULL
+#define KERNEL_DYNAMIC_START      0xFF00000000000000ULL
+#define KERNEL_DYNAMIC_END        0xFFFFFFFF7FFFFFFFULL
+#define KERNEL_STATIC_START       0xFFFFFFFF80000000ULL
+#define KERNEL_STATIC_END         0xFFFFFFFFFFFFFFFFULL
+
+/* Backward-compatible alias used by existing call sites */
+#define KRNL_SPACE_BASE_ADDR KERNEL_DYNAMIC_START
+
+#define IS_USER_SPACE(x)          ((x) >= USER_SPACE_START && (x) <= USER_SPACE_END)
+#define IS_CANONICAL_HOLE(x)      ((x) >= CANONICAL_HOLE_START && (x) <= CANONICAL_HOLE_END)
+#define IS_KERNEL_DYNAMIC_SPACE(x) ((x) >= KERNEL_DYNAMIC_START && (x) <= KERNEL_DYNAMIC_END)
+#define IS_KERNEL_STATIC_SPACE(x) ((x) >= KERNEL_STATIC_START && (x) <= KERNEL_STATIC_END)
+#define IS_KRNL_SPACE(x)          (IS_KERNEL_DYNAMIC_SPACE(x) || IS_KERNEL_STATIC_SPACE(x))
+
+static inline int mm64_kernel_dynamic_range_fits(addr_t mapstart, int incpgnum)
+{
+	if (incpgnum <= 0)
+		return 0;
+
+	addr_t mapsz = (addr_t)incpgnum * PAGING64_PAGESZ;
+	if (mapsz / PAGING64_PAGESZ != (addr_t)incpgnum)
+		return 0; /* multiplication overflow */
+
+	if (mapstart < KERNEL_DYNAMIC_START || mapstart > KERNEL_DYNAMIC_END)
+		return 0;
+
+	if (mapstart > KERNEL_DYNAMIC_END - (mapsz - 1))
+		return 0; /* crosses into static kernel region */
+
+	return 1;
+}
 
 /* OFFSET */
 #define PAGING64_ADDR_OFFST_HIBIT 11

@@ -131,14 +131,14 @@ static void * ld_routine(void * args) {
 	os.krnl_pmd = calloc(512, sizeof(addr_t));
 	os.krnl_pt  = calloc(PAGING64_MAX_PGN, sizeof(addr_t));
 
-	/* Wire up the path for KRNL_SPACE_BASE_ADDR = 0xffff800000000000:
-	 * pgd[511] -> p4d, p4d[256] -> pud, pud[0] -> pmd, pmd[0] -> pt
+	/* Wire up the page-table path for KERNEL_DYNAMIC_START.
 	 * All kernel virtual pages share this single pt array (indexed by pt_idx).
 	 */
-	os.krnl_pgd[511] = (addr_t)os.krnl_p4d;
-	os.krnl_p4d[256] = (addr_t)os.krnl_pud;
-	os.krnl_pud[0]   = (addr_t)os.krnl_pmd;
-	os.krnl_pmd[0]   = (addr_t)os.krnl_pt;
+	addr_t kbase = KERNEL_DYNAMIC_START;
+	os.krnl_pgd[PAGING64_ADDR_PGD(kbase)] = (addr_t)os.krnl_p4d;
+	os.krnl_p4d[PAGING64_ADDR_P4D(kbase)] = (addr_t)os.krnl_pud;
+	os.krnl_pud[PAGING64_ADDR_PUD(kbase)] = (addr_t)os.krnl_pmd;
+	os.krnl_pmd[PAGING64_ADDR_PMD(kbase)] = (addr_t)os.krnl_pt;
 #ifdef MM_PAGING
 	/* Init kernel mm_struct so kmalloc works */
 	os.mm = malloc(sizeof(struct mm_struct));
