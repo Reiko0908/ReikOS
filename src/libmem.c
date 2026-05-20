@@ -664,13 +664,13 @@ int libkmem_copy_from_user(struct pcb_t *caller, uint32_t source, uint32_t desti
 
   BYTE data;
   for (uint32_t i = 0; i < size; i++) {
-    __read_user_mem(caller, user_rg->vmaid, source, offset + i, &data)
+    __read_user_mem(caller, user_rg->vmaid, source, offset + i, &data);
     __write_kernel_mem(caller, krnl_rg->vmaid, destination, offset + i, data);
   }
   return 0;
 }
 
-int libkmem_copy_to_user(struct pcb_t *caller, uint32_t source, uint32_t destination, uint32_t offset, uint32_t size) {
+int libkmem_copy_to_user(struct pcb_t *caller, uint32_t source, uint32_t destination, uint32_t offset, uint32_t size)
 {
   struct vm_rg_struct *krnl_rg = get_symrg_byid(caller->krnl->mm, source);
   struct vm_rg_struct *user_rg = get_symrg_byid(caller->mm, destination);

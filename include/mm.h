@@ -1,8 +1,9 @@
+#include "common.h"
 #include "os-mm.h"
 #include <stdint.h>
 #ifndef MM_H
 
-#include "common.h"
+// #include "common.h"
 #include "bitops.h"
 
 /* CPU Bus definition */
