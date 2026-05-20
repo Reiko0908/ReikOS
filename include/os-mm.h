@@ -11,7 +11,7 @@
 #ifndef OSMM_H
 #define OSMM_H
 
-#include <pthread.h>
+// #include <pthread.h>
 #include <stdint.h>
 
 #define MM_PAGING
@@ -174,7 +174,7 @@ struct framephy_struct {
 
 
 struct memphy_struct {
-  pthread_mutex_t lock;
+//   pthread_mutex_t lock;
   BYTE   *storage;
   addr_t  maxsz;
   int     rdmflg;
