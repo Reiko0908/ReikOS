@@ -1,7 +1,11 @@
+#ifndef MM_H
+#define MM_H
+
+#include <stdint.h>
 #include "common.h"
 #include "os-mm.h"
-#include <stdint.h>
-#ifndef MM_H
+#include "bitops.h"
+
 
 // #include "common.h"
 #include "bitops.h"
