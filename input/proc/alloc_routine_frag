@@ -1,0 +1,41 @@
+1 20
+alloc 64 0
+syscall 440 100 0 1 0
+alloc 64 1
+syscall 440 100 1 1 0
+alloc 64 2
+syscall 440 100 2 1 0
+alloc 64 3
+syscall 440 100 3 1 0
+alloc 64 4
+syscall 440 100 4 1 0
+free 1
+syscall 440 100 1 0 0
+free 3
+syscall 440 100 3 0 0
+alloc 128 5
+syscall 440 100 5 1 0
+free 0
+syscall 440 100 0 0 0
+alloc 32 0
+syscall 440 100 0 1 0
+free 2
+syscall 440 100 2 0 0
+alloc 96 2
+syscall 440 100 2 1 0
+free 4
+syscall 440 100 4 0 0
+alloc 48 4
+syscall 440 100 4 1 0
+free 5
+syscall 440 100 5 0 0
+alloc 200 6
+syscall 440 100 6 1 0
+free 6
+syscall 440 100 6 0 0
+alloc 16 7
+syscall 440 100 7 1 0
+free 7
+syscall 440 100 7 0 0
+free 0
+syscall 440 100 0 0 0

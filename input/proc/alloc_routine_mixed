@@ -1,0 +1,27 @@
+1 14
+alloc 100 0
+syscall 440 100 0 1 0
+write 42 0 0
+syscall 440 101 0 0 42
+alloc 200 1
+syscall 440 100 1 1 0
+write 99 1 10
+syscall 440 101 1 10 99
+read 0 0 5
+alloc 512 2
+syscall 440 100 2 1 0
+free 1
+syscall 440 100 1 0 0
+alloc 128 3
+syscall 440 100 3 1 0
+write 7 3 0
+syscall 440 101 3 0 7
+free 0
+syscall 440 100 0 0 0
+alloc 64 0
+syscall 440 100 0 1 0
+read 3 0 6
+free 2
+syscall 440 100 2 0 0
+free 3
+syscall 440 100 3 0 0
