@@ -14,6 +14,10 @@
 // #include <pthread.h>
 #include <stdint.h>
 
+#ifndef OSCFG_H
+#include "os-cfg.h"
+#endif
+
 #define MM_PAGING
 #define PAGING_MAX_MMSWP 4 /* max number of supported swapped space */
 #define PAGING_MAX_SYMTBL_SZ 30
