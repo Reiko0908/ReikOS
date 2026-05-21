@@ -167,7 +167,9 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
       free_tail_rg->rg_next = NULL;
       enlist_vm_freerg_list(caller->mm, free_tail_rg);
     }
-  }   pthread_mutex_unlock(&mmvm_lock);
+  }
+
+  pthread_mutex_unlock(&mmvm_lock);
   return 0;
 }
 
@@ -472,13 +474,11 @@ int libkmem_malloc(struct pcb_t *caller, uint32_t size, uint32_t reg_index) {
  */
 addr_t __kmalloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *alloc_addr) {
   pthread_mutex_lock(&mmvm_lock);
-
   struct mm_struct *krnl_mm = caller->krnl->mm;
   if (rgid < 0 || rgid >= PAGING_MAX_SYMTBL_SZ) {
-      pthread_mutex_unlock(&mmvm_lock);
-      return -1;
-    }
-
+    pthread_mutex_unlock(&mmvm_lock);
+    return -1;
+  }
   if (krnl_mm->symrgtbl[rgid].rg_start != 0 || krnl_mm->symrgtbl[rgid].rg_end   != 0) {
     pthread_mutex_unlock(&mmvm_lock);
     return -1;
