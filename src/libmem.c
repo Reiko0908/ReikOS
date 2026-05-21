@@ -390,7 +390,7 @@ int libread(struct pcb_t *proc, // Process executing the instruction
   if (!IS_USER_SPACE(addr)) return -1;
 
   int vmaid = get_vmaid_by_addr(proc->mm, addr);
-  int rgid = get_symrg_id_by_addr(proc->mm, addr);
+  int rgid = get_symrgid_by_addr(proc->mm, addr);
   struct vm_rg_struct *currg = get_symrg_byid(proc->mm, rgid);
   addr_t rel_off = (currg) ? (addr - currg->rg_start) : offset;
 
@@ -434,7 +434,7 @@ int libwrite(struct pcb_t *proc, BYTE data, uint32_t destination, addr_t offset)
   if (!IS_USER_SPACE(addr)) return -1;
 
   int vmaid = get_vmaid_by_addr(proc->mm, addr);
-  int rgid = get_symrg_id_by_addr(proc->mm, addr);
+  int rgid = get_symrgid_by_addr(proc->mm, addr);
   struct vm_rg_struct *currg = get_symrg_byid(proc->mm, rgid);
   addr_t rel_off = (currg) ? (addr - currg->rg_start) : offset;
 
