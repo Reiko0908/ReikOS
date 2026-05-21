@@ -130,12 +130,14 @@ static void * ld_routine(void * args) {
 	os.krnl_pmd = calloc(512, sizeof(addr_t));
 	os.krnl_pt  = calloc(PAGING64_MAX_PGN, sizeof(addr_t));
 
-	/* Wire up the path for KRNL_SPACE_BASE_ADDR = 0xffff800000000000:
-	 * pgd[511] -> p4d, p4d[256] -> pud, pud[0] -> pmd, pmd[0] -> pt
-	 * All kernel virtual pages share this single pt array (indexed by pt_idx).
+	/* Wire up the kernel page-table root using the configured kernel base.
+	 * Do not hardcode the split here; derive the indices from mm64.h so the
+	 * debug printer and the mapper walk the same root path.
 	 */
-	os.krnl_pgd[511] = (addr_t)os.krnl_p4d;
-	os.krnl_p4d[256] = (addr_t)os.krnl_pud;
+	addr_t k_pgd, k_p4d, k_pud, k_pmd, k_pt;
+	get_pd_from_address(KRNL_SPACE_BASE_ADDR, &k_pgd, &k_p4d, &k_pud, &k_pmd, &k_pt);
+	os.krnl_pgd[k_pgd] = (addr_t)os.krnl_p4d;
+	os.krnl_p4d[k_p4d] = (addr_t)os.krnl_pud;
 	os.krnl_pud[0]   = (addr_t)os.krnl_pmd;
 	os.krnl_pmd[0]   = (addr_t)os.krnl_pt;
 #ifdef MM_PAGING
