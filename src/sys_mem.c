@@ -12,6 +12,7 @@
 #include "syscall.h"
 #include "libmem.h"
 #include "queue.h"
+#include "sched.h"
 #include <stdlib.h>
 
 #ifdef MM64
@@ -30,25 +31,7 @@ int __sys_memmap(struct krnl_t *krnl, uint32_t pid, struct sc_regs* regs)
 
    if (!krnl || !regs) return -1;
 
-   struct queue_t *running_list = krnl->running_list;
-   
-   if (running_list != NULL && running_list->size > 0) {
-      for (int i = 0; i < running_list->size; i++) {
-         if (running_list->proc[i] != NULL && running_list->proc[i]->pid == pid) {
-            caller = running_list->proc[i];
-            break;
-         }
-      }
-   }
-   
-   if (caller == NULL && krnl->ready_queue != NULL && krnl->ready_queue->size > 0) {
-      for (int i = 0; i < krnl->ready_queue->size; i++) {
-         if (krnl->ready_queue->proc[i] != NULL && krnl->ready_queue->proc[i]->pid == pid) {
-            caller = krnl->ready_queue->proc[i];
-            break;
-         }
-      }
-   }
+   caller= find_proc_by_pid(pid);
    
    if (caller == NULL) {
       printf("[ERROR] cannot resolve pid %u in kernel process lists\n", pid);

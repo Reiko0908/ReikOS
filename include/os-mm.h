@@ -11,6 +11,7 @@
 #ifndef OSMM_H
 #define OSMM_H
 
+// #include <pthread.h>
 #include <stdint.h>
 
 #define MM_PAGING
@@ -164,25 +165,26 @@ struct buddy_system {
 /*
  * FRAME/MEM PHY struct
  */
-struct framephy_struct { 
-  addr_t fpn;
-  struct framephy_struct *fp_next;
-
-  /* Resereed for tracking allocated framed */
-  struct mm_struct* owner;
+struct framephy_struct {
+    addr_t fpn;       /* frame page number */
+    int    order;     /* buddy order: block covers 2^order frames */
+    struct framephy_struct *fp_next;
+    void *owner;      /* mm_struct that owns this frame */
 };
 
-struct memphy_struct {
-  /* Basic field of data and size */
-  BYTE *storage;
-  int maxsz;
 
-  /* Sequential device fields */ 
-  int rdmflg;
-  int cursor;
+struct memphy_struct {
+//   pthread_mutex_t lock;
+  BYTE   *storage;
+  addr_t  maxsz;
+  int     rdmflg;
+  addr_t  cursor;
 
   struct buddy_system buddy;
-  int buddy_initialized;
+  int     buddy_initialized;
+ 
+  struct framephy_struct *free_fp_list;
+  struct framephy_struct *used_fp_list;
 };
 
 #endif

@@ -1,0 +1,28 @@
+# Ignore build artifacts and output
+obj/
+output/
+
+# Object files and listings
+*.o
+*.lst
+
+# Binaries produced by Makefile
+os
+sched
+mem
+pdg
+
+# Logs and temporary files
+*.log
+*.tmp
+*~
+*.swp
+*.swo
+
+# Editor and OS files
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak

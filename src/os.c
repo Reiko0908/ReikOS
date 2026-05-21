@@ -1,11 +1,10 @@
-
-#include "cpu.h"
-#include "timer.h"
-#include "sched.h"
-#include "loader.h"
-#include "mm.h"
+#include "../include/cpu.h"
+#include "../include/timer.h"
+#include "../include/sched.h"
+#include "../include/loader.h"
+#include "../include/mm.h"
 #ifdef MM64
-#include "mm64.h"
+#include "../include/mm64.h"
 #endif
 
 #include <pthread.h>
@@ -47,62 +46,71 @@ struct cpu_args {
 	int id;
 };
 
-
 static void * cpu_routine(void * args) {
 	struct timer_id_t * timer_id = ((struct cpu_args*)args)->timer_id;
 	int id = ((struct cpu_args*)args)->id;
 	/* Check for new process in ready queue */
 	int time_left = 0;
 	struct pcb_t * proc = NULL;
+	
 	while (1) {
 		/* Check the status of current process */
 		if (proc == NULL) {
 			/* No process is running, the we load new process from
 		 	* ready queue */
+      sched_wait_for_loader(current_time(), done);
 			proc = get_proc();
 			if (proc == NULL) {
-                           next_slot(timer_id);
-                           continue; /* First load failed. skip dummy load */
-                        }
-		}else if (proc->pc == proc->code->size) {
+        next_slot(timer_id);
+        continue; /* First load failed. skip dummy load */
+      }
+		} else if (proc->pc == proc->code->size) {
 			/* The porcess has finish it job */
 			printf("\tCPU %d: Processed %2d has finished\n",
 				id ,proc->pid);
 			free(proc);
+      sched_wait_for_loader(current_time(), done);
 			proc = get_proc();
 			time_left = 0;
-		}else if (time_left == 0) {
+		} else if (time_left == 0) {
 			/* The process has done its job in current time slot */
-			printf("\tCPU %d: Put process %2d to run queue\n",
-				id, proc->pid);
+			printf("\tCPU %d: Put process %2d to run queue (pc=%d/%d)\n",
+				id, proc->pid, proc->pc, proc->code->size);
 			put_proc(proc);
+      sched_wait_for_loader(current_time(), done);
 			proc = get_proc();
 		}
-		
+
 		/* Recheck process status after loading new process */
 		if (proc == NULL && done) {
 			/* No process to run, exit */
 			printf("\tCPU %d stopped\n", id);
 			break;
-		}else if (proc == NULL) {
+		} else if (proc == NULL) {
 			/* There may be new processes to run in
 			 * next time slots, just skip current slot */
 			next_slot(timer_id);
 			continue;
-		}else if (time_left == 0) {
+		} else if (time_left == 0) {
 			printf("\tCPU %d: Dispatched process %2d\n",
 				id, proc->pid);
 			time_left = time_slot;
 		}
-		
+
 		/* Run current process */
     proc->krnl->current = proc;
 		run(proc);
 		time_left--;
+		fflush(stdout);
 		next_slot(timer_id);
 	}
 	detach_event(timer_id);
 	pthread_exit(NULL);
+}
+
+static void ld_next_slot(struct timer_id_t * timer_id) {
+  sched_signal_loader_done(current_time());
+  next_slot(timer_id);
 }
 
 static void * ld_routine(void * args) {
@@ -117,20 +125,26 @@ static void * ld_routine(void * args) {
 	int i = 0;
   /* TODO init kernel page table directory */
 #ifdef MM64
-	os.krnl_pgd = malloc(PAGING64_MAX_PGN * sizeof(addr_t));
-	os.krnl_p4d = malloc(PAGING64_MAX_PGN * sizeof(addr_t));
-	os.krnl_pud = malloc(PAGING64_MAX_PGN * sizeof(addr_t));
-	os.krnl_pmd = malloc(PAGING64_MAX_PGN * sizeof(addr_t));
-	os.krnl_pt = malloc(PAGING64_MAX_PGN * sizeof(addr_t));
+	os.krnl_pgd = calloc(512, sizeof(addr_t));
+	os.krnl_p4d = calloc(512, sizeof(addr_t));
+	os.krnl_pud = calloc(512, sizeof(addr_t));
+	os.krnl_pmd = calloc(512, sizeof(addr_t));
+	os.krnl_pt  = calloc(PAGING64_MAX_PGN, sizeof(addr_t));
 
-	for (i = 0; i < PAGING64_MAX_PGN; i++)
-	{
-	   os.krnl_pgd[i] = (addr_t)&os.krnl_p4d;
-	   os.krnl_p4d[i] = (addr_t)&os.krnl_pud;
-	   os.krnl_pud[i] = (addr_t)&os.krnl_pmd;
-	   os.krnl_pmd[i] = (addr_t)&os.krnl_pt;
-	   os.krnl_pt[i] = 0;
-	}
+	/* Wire up the path for KRNL_SPACE_BASE_ADDR = 0xffff800000000000:
+	 * pgd[511] -> p4d, p4d[256] -> pud, pud[0] -> pmd, pmd[0] -> pt
+	 * All kernel virtual pages share this single pt array (indexed by pt_idx).
+	 */
+	os.krnl_pgd[511] = (addr_t)os.krnl_p4d;
+	os.krnl_p4d[256] = (addr_t)os.krnl_pud;
+	os.krnl_pud[0]   = (addr_t)os.krnl_pmd;
+	os.krnl_pmd[0]   = (addr_t)os.krnl_pt;
+#ifdef MM_PAGING
+	/* Init kernel mm_struct so kmalloc works */
+	os.mm = malloc(sizeof(struct mm_struct));
+	memset(os.mm, 0, sizeof(struct mm_struct));
+	krnl_init_mm(os.mm, &os);
+#endif
 #else
 	os.krnl_pgd = malloc(PAGING_MAX_PGN * sizeof(uint32_t));
 #endif
@@ -138,13 +152,14 @@ static void * ld_routine(void * args) {
 	printf("ld_routine\n");
 	while (i < num_processes) {
 		struct pcb_t * proc = load(ld_processes.path[i]);
-		struct krnl_t * krnl = proc->krnl = &os;	
+		struct krnl_t * krnl = proc->krnl = &os;
 
 #ifdef MLQ_SCHED
 		proc->prio = ld_processes.prio[i];
 #endif
+		/* Advance time slots until we reach the process start_time */
 		while (current_time() < ld_processes.start_time[i]) {
-			next_slot(timer_id);
+			ld_next_slot(timer_id);
 		}
 #ifdef MM_PAGING
 		proc->mm = malloc(sizeof(struct mm_struct));
@@ -158,11 +173,12 @@ static void * ld_routine(void * args) {
 		add_proc(proc);
 		free(ld_processes.path[i]);
 		i++;
-		next_slot(timer_id);
+		ld_next_slot(timer_id);
 	}
 	free(ld_processes.path);
 	free(ld_processes.start_time);
 	done = 1;
+  sched_signal_loader_done(current_time());
 	detach_event(timer_id);
 	pthread_exit(NULL);
 }
@@ -182,7 +198,7 @@ static void read_config(const char * path) {
 #ifdef MM_FIXED_MEMSZ
 	/* We provide here a back compatible with legacy OS simulatiom config file
          * In which, it have no addition config line for Mema, keep only one line
-	 * for legacy info 
+	 * for legacy info
          *  [time slice] [N = Number of CPU] [M = Number of Processes to be run]
          */
         memramsz  =  0x100000000;
@@ -196,7 +212,7 @@ static void read_config(const char * path) {
 	*/
 	fscanf(file, FORMAT_ARG "\n", &memramsz);
 	for(sit = 0; sit < PAGING_MAX_MMSWP; sit++)
-		fscanf(file, FORMAT_ARG, &(memswpsz[sit])); 
+		fscanf(file, FORMAT_ARG, &(memswpsz[sit]));
 
        fscanf(file, "\n"); /* Final character */
 #endif
@@ -237,7 +253,7 @@ int main(int argc, char * argv[]) {
 	struct cpu_args * args =
 		(struct cpu_args*)malloc(sizeof(struct cpu_args) * num_cpus);
 	pthread_t ld;
-	
+
 	/* Init timer */
 	int i;
 	for (i = 0; i < num_cpus; i++) {
@@ -257,7 +273,7 @@ int main(int argc, char * argv[]) {
 	/* Create MEM RAM */
 	init_memphy(&mram, memramsz, rdmflag);
 
-        /* Create all MEM SWAP */ 
+        /* Create all MEM SWAP */
 	int sit;
 	for(sit = 0; sit < PAGING_MAX_MMSWP; sit++)
 	       init_memphy(&mswp[sit], memswpsz[sit], rdmflag);
@@ -296,10 +312,5 @@ int main(int argc, char * argv[]) {
 
 	/* Stop timer */
 	stop_timer();
-
 	return 0;
-
 }
-
-
-

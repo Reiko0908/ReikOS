@@ -16,10 +16,19 @@ static uint64_t _time;
 
 static int timer_started = 0;
 static int timer_stop = 0;
+static pthread_mutex_t timer_state_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static int timer_should_stop(void) {
+	int stop;
+	pthread_mutex_lock(&timer_state_lock);
+	stop = timer_stop;
+	pthread_mutex_unlock(&timer_state_lock);
+	return stop;
+}
 
 
 static void * timer_routine(void * args) {
-	while (!timer_stop) {
+	while (!timer_should_stop()) {
 		printf("Time slot %3lu\n", current_time());
 		int fsh = 0;
 		int event = 0;
@@ -42,7 +51,9 @@ static void * timer_routine(void * args) {
 		}
 
 		/* Increase the time slot */
+		pthread_mutex_lock(&timer_state_lock);
 		_time++;
+		pthread_mutex_unlock(&timer_state_lock);
 		
 		/* Let devices continue their job */
 		for (temp = dev_list; temp != NULL; temp = temp->next) {
@@ -77,11 +88,19 @@ void next_slot(struct timer_id_t * timer_id) {
 }
 
 uint64_t current_time() {
-	return _time;
+	uint64_t now;
+	pthread_mutex_lock(&timer_state_lock);
+	now = _time;
+	pthread_mutex_unlock(&timer_state_lock);
+	return now;
 }
 
 void start_timer() {
+	pthread_mutex_lock(&timer_state_lock);
 	timer_started = 1;
+	timer_stop = 0;
+	_time = 0;
+	pthread_mutex_unlock(&timer_state_lock);
 	pthread_create(&_timer, NULL, timer_routine, NULL);
 }
 
@@ -93,7 +112,10 @@ void detach_event(struct timer_id_t * event) {
 }
 
 struct timer_id_t * attach_event() {
-	if (timer_started) {
+	pthread_mutex_lock(&timer_state_lock);
+	int started = timer_started;
+	pthread_mutex_unlock(&timer_state_lock);
+	if (started) {
 		return NULL;
 	}else{
 		struct timer_id_container_t * container =
@@ -118,7 +140,9 @@ struct timer_id_t * attach_event() {
 }
 
 void stop_timer() {
+	pthread_mutex_lock(&timer_state_lock);
 	timer_stop = 1;
+	pthread_mutex_unlock(&timer_state_lock);
 	pthread_join(_timer, NULL);
 	while (dev_list != NULL) {
 		struct timer_id_container_t * temp = dev_list;
