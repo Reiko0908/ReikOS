@@ -1,9 +1,9 @@
+#ifndef MM_H
+#define MM_H
+
+#include <stdint.h>
 #include "common.h"
 #include "os-mm.h"
-#include <stdint.h>
-#ifndef MM_H
-
-// #include "common.h"
 #include "bitops.h"
 
 /* CPU Bus definition */
@@ -178,6 +178,7 @@ struct vm_rg_struct * get_symrg_byid(struct mm_struct* mm, int rgid);
 int validate_overlap_vm_area(struct pcb_t *caller, int vmaid, addr_t vmastart, addr_t vmaend);
 int get_free_vmrg_area(struct pcb_t *caller, int vmaid, int size, struct vm_rg_struct *newrg);
 int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz);
+int krnl_inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz);
 int find_victim_page(struct mm_struct* mm, addr_t *pgn);
 struct vm_area_struct *get_vma_by_num(struct mm_struct *mm, int vmaid);
 struct vm_rg_struct *get_vm_area_node_at_brk(struct pcb_t *caller, int vmaid, addr_t size, addr_t alignedsz);
