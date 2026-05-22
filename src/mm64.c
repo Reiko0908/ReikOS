@@ -373,6 +373,12 @@ addr_t krnl_vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
   
   mapstart = KERNEL_DYNAMIC_START + ret_alloc * PAGING64_PAGESZ;
   if (!mm64_kernel_dynamic_range_fits(mapstart, incpgnum)) {
+    /* Diagnostic: explicitly report kernel dynamic region overflow */
+    printf("[ERROR] krnl_vm_map_ram: kernel dynamic region overflow. mapstart=0x%016lx incpgnum=%d\n",
+           (unsigned long)mapstart, incpgnum);
+    printf("         KERNEL_DYNAMIC_START=0x%016lx KERNEL_DYNAMIC_END=0x%016lx KERNEL_STATIC_START=0x%016lx\n",
+           (unsigned long)KERNEL_DYNAMIC_START, (unsigned long)KERNEL_DYNAMIC_END, (unsigned long)KERNEL_STATIC_START);
+    /* Clean up allocated frames before aborting so we don't leak resources */
     struct framephy_struct *fpit = frm_lst;
     while (fpit != NULL) {
       struct framephy_struct *next = fpit->fp_next;
@@ -380,7 +386,8 @@ addr_t krnl_vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
       free(fpit);
       fpit = next;
     }
-    return -1;
+    fflush(stdout);
+    exit(1); /* Force stop so the violation is visible */
   }
 	if (krnl_vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg) < 0) {
 		struct framephy_struct *fpit = frm_lst;
