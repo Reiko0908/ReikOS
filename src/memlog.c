@@ -23,15 +23,17 @@ void print_frame_list(const char *name, struct framephy_struct *head)
 
 static const char *addr_region_name(addr_t addr)
 {
-    if (IS_USER_SPACE(addr))
-        return "USER";
-    if (IS_CANONICAL_HOLE(addr))
-        return "CANONICAL_HOLE";
-    if (IS_KERNEL_DYNAMIC_SPACE(addr))
-        return "KERNEL_DYNAMIC";
-    if (IS_KERNEL_STATIC_SPACE(addr))
-        return "KERNEL_STATIC";
-    return "UNKNOWN";
+  if (IS_USER_DYNAMIC_SPACE(addr))
+    return "USER_DYNAMIC";
+  if (IS_USER_STATIC_SPACE(addr))
+    return "USER_STATIC";
+  if (IS_CANONICAL_HOLE(addr))
+    return "CANONICAL_HOLE";
+  if (IS_KRNL_DYNAMIC_SPACE(addr))
+    return "KRNL_DYNAMIC";
+  if (IS_KRNL_STATIC_SPACE(addr))
+    return "KRNL_STATIC";
+  return "UNKNOWN";
 }
 
 static const char *rg_region_name(addr_t start, addr_t end)
@@ -181,7 +183,7 @@ static void print_symtbl_merged(struct mm_struct *user_mm, struct mm_struct *krn
             printf("[rg%d:0x%lx-0x%lx mode=%s region=%s] ", i,
                    (unsigned long)user_mm->symrgtbl[i].rg_start,
                    (unsigned long)user_mm->symrgtbl[i].rg_end,
-                   user_mm->symrgtbl[i].mode_bit ? "USER" : "KERNEL",
+                   user_mm->symrgtbl[i].mode_bit ? "USER" : "KRNL",
                    rg_region_name(user_mm->symrgtbl[i].rg_start, user_mm->symrgtbl[i].rg_end));
             empty = 0;
         }
@@ -189,7 +191,7 @@ static void print_symtbl_merged(struct mm_struct *user_mm, struct mm_struct *krn
             printf("[rg%d:0x%lx-0x%lx mode=%s region=%s] ", i,
                    (unsigned long)krnl_mm->symrgtbl[i].rg_start,
                    (unsigned long)krnl_mm->symrgtbl[i].rg_end,
-                   krnl_mm->symrgtbl[i].mode_bit ? "USER" : "KERNEL",
+                   krnl_mm->symrgtbl[i].mode_bit ? "USER" : "KRNL",
                    rg_region_name(krnl_mm->symrgtbl[i].rg_start, krnl_mm->symrgtbl[i].rg_end));
             empty = 0;
         }
@@ -226,7 +228,7 @@ void print_kernel_info(struct krnl_t *os)
 
     /* kernel page-table window */
     printf("PAGE TABLE KENEL: ");
-    const addr_t KBASE_PGN = KRNL_SPACE_BASE_ADDR / PAGING64_PAGESZ;
+    const addr_t KBASE_PGN = KRNL_DYNAMIC_START / PAGING64_PAGESZ;
     for (int i = 0; i < 4; i++) {
         uint32_t pte = pte_get_entry_kernel_print(os, KBASE_PGN + i);
         if      (PAGING_PAGE_PRESENT(pte))      printf("[page=%lx -> frame=%u] ", KBASE_PGN + i, PAGING_PTE_FPN(pte));
