@@ -14,11 +14,11 @@
  * Memory Module Library libmem.c
  */
 
-#include "../include/libmem.h"
-#include "../include/mm.h"
-#include "../include/mm64.h"
+#include "libmem.h"
+#include "mm.h"
+#include "mm64.h"
 #include "string.h"
-#include "../include/syscall.h"
+#include "syscall.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -208,7 +208,7 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
     }
   }
 
-  refresh_vma_sentinel(cur_vma); 
+  refresh_vma_sentinel(cur_vma);
   pthread_mutex_unlock(&mmvm_lock);
   return 0;
 }
@@ -700,7 +700,7 @@ addr_t __kmem_cache_alloc(struct pcb_t *caller, int vmaid, int rgid, int cache_p
   return 0;
 }
 
-int libkmem_copy_from_user(struct pcb_t *caller, uint32_t source, uint32_t destination, uint32_t offset, uint32_t size) 
+int libkmem_copy_from_user(struct pcb_t *caller, uint32_t source, uint32_t destination, uint32_t offset, uint32_t size)
 {
   struct vm_rg_struct *user_rg = get_symrg_byid(caller->mm, source);
   struct vm_rg_struct *krnl_rg = get_symrg_byid(caller->krnl->mm, destination);

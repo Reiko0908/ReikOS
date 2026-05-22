@@ -15,13 +15,13 @@
  */
 
 #include "string.h"
-#include "../include/mm.h"
+#include "mm.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <pthread.h>
 
 #if defined (MM64)
-	#include "../include/mm64.h"
+	#include "mm64.h"
 #endif
 
 /*get_vma_by_num - get vm area by numID
