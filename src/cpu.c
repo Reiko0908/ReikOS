@@ -3,6 +3,7 @@
 #include "mm.h"
 #include "syscall.h"
 #include "libmem.h"
+#include "print_debug.h"
 
 int calc(struct pcb_t *proc)
 {
@@ -48,8 +49,8 @@ int read(
 }
 
 int write(
-	struct pcb_t *proc,	// Process executing the instruction
-	BYTE data,		// Data to be wrttien into memory
+	struct pcb_t *proc,	  // Process executing the instruction
+	BYTE data,			  // Data to be wrttien into memory
 	uint32_t destination, // Index of destination register
 	uint32_t offset)
 { // Destination address =
@@ -68,7 +69,7 @@ int run(struct pcb_t *proc)
 	struct inst_t ins = proc->code->text[proc->pc];
 	proc->pc++;
 	int stat = 1;
-switch (ins.opcode)
+	switch (ins.opcode)
 	{
 	case CALC:
 		stat = calc(proc);
@@ -80,7 +81,7 @@ switch (ins.opcode)
 		stat = alloc(proc, ins.arg_0, ins.arg_1);
 #endif
 		break;
-#ifdef MM_PAGING		
+#ifdef MM_PAGING
 	case KMALLOC:
 		stat = libkmem_malloc(proc, ins.arg_0, ins.arg_1);
 		break;
@@ -107,7 +108,7 @@ switch (ins.opcode)
 		break;
 	case READ:
 #ifdef MM_PAGING
-		stat = libread(proc, ins.arg_0, ins.arg_1, (uint32_t*) &ins.arg_2);
+		stat = libread(proc, ins.arg_0, ins.arg_1, (uint32_t *)&ins.arg_2);
 #else
 		stat = read(proc, ins.arg_0, ins.arg_1, ins.arg_2);
 #endif
@@ -125,5 +126,28 @@ switch (ins.opcode)
 	default:
 		stat = 1;
 	}
+#ifdef MEMLOG
+	printf("\n======================================== KERNEL INFO ========================================\n");
+	const char *opcode_str[] = {
+		"CALC",
+		"ALLOC",
+		"FREE",
+		"READ",
+		"WRITE",
+		"KMALLOC",
+		"KMEM_CACHE_CREATE",
+		"KMEM_CACHE_ALLOC",
+		"COPY_FROM_USER",
+		"COPY_TO_USER",
+		"SYSCALL"};
+	printf("[EXEC] %s | args=(%lu,%lu,%lu,%lu)\n",
+		   opcode_str[ins.opcode],
+		   (unsigned long)ins.arg_0,
+		   (unsigned long)ins.arg_1,
+		   (unsigned long)ins.arg_2,
+		   (unsigned long)ins.arg_3);
+	print_kernel_info(proc->krnl);
+#endif
+
 	return stat;
 }
