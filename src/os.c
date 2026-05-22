@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 static int time_slot;
 static int num_cpus;
@@ -177,9 +178,6 @@ static void * ld_routine(void * args) {
 	 */
 	os.krnl_pgd[511] = (addr_t)os.krnl_p4d;
 	os.krnl_p4d[256] = (addr_t)os.krnl_pud;
-R, &k_pgd, &k_p4d, &k_pud, &k_pmd, &k_pt);
-	os.krnl_pgd[k_pgd] = (addr_t)os.krnl_p4d;
-	os.krnl_p4d[k_p4d] = (addr_t)os.krnl_pud;
 	os.krnl_pud[0]   = (addr_t)os.krnl_pmd;
 	os.krnl_pmd[0]   = (addr_t)os.krnl_pt;
 #ifdef MM_PAGING
@@ -222,7 +220,6 @@ R, &k_pgd, &k_p4d, &k_pud, &k_pmd, &k_pt);
 	free(ld_processes.start_time);
 	done = 1;
   sched_signal_loader_done(current_time());
-l finish
 	detach_event(timer_id);
 	pthread_exit(NULL);
 }
@@ -356,6 +353,5 @@ int main(int argc, char * argv[]) {
 
 	/* Stop timer */
 	stop_timer();
-
 	return 0;
 }
