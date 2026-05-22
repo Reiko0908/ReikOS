@@ -226,6 +226,7 @@ addr_t alloc_pages_range(struct pcb_t *caller, int req_pgnum,
   struct framephy_struct *newfp = NULL;
   struct framephy_struct *tail = NULL;
   *frm_lst = NULL;
+
   int max_ram_frames = caller->krnl->mram->maxsz / PAGING64_PAGESZ;
   if (req_pgnum > max_ram_frames) return -3000;
 
@@ -251,9 +252,15 @@ addr_t alloc_pages_range(struct pcb_t *caller, int req_pgnum,
         return -3000;
       }
 
-      fpn = PAGING64_FPN(pte_get_entry(caller, victim_pgn));
+      fpn = PAGING_PTE_FPN(pte_get_entry(caller, victim_pgn));
       __swap_cp_page(caller->krnl->mram, fpn, caller->krnl->active_mswp, swpfpn);
       pte_set_swap(caller, victim_pgn, 0, swpfpn);
+      /* Zero the recycled frame */
+      for (int ci = 0; ci < PAGING64_PAGESZ; ci++)
+        MEMPHY_write(caller->krnl->mram, (addr_t)fpn * PAGING64_PAGESZ + ci, 0);
+      /* Move the recycled frame to head of used_fp_list */
+      fp_list_remove(&caller->krnl->mram->used_fp_list, (addr_t)fpn);
+      fp_list_push(&caller->krnl->mram->used_fp_list, (addr_t)fpn, 0);
     }
     MEMPHY_set_fp_owner(caller->krnl->mram, fpn, caller->mm);
 
@@ -285,7 +292,23 @@ addr_t krnl_alloc_pages_range(struct pcb_t *caller, int req_pgnum,
   if (!caller || !caller->krnl || !caller->krnl->mram)
     return -1;
   addr_t base_fpn;
-  return MEMPHY_get_contiguous_freefp(caller->krnl->mram, req_pgnum, &base_fpn);
+  int ret = MEMPHY_get_contiguous_freefp(caller->krnl->mram, req_pgnum, &base_fpn);
+  if (ret != 0) return -1;
+  /* Build the framephy_struct linked list */
+  *frm_lst = NULL;
+  struct framephy_struct *tail = NULL;
+  for (int i = 0; i < req_pgnum; i++) {
+    struct framephy_struct *fp = malloc(sizeof(struct framephy_struct));
+    fp->fpn = base_fpn + i;
+    fp->fp_next = NULL;
+    if (tail == NULL) {
+      *frm_lst = fp;
+    } else {
+      tail->fp_next = fp;
+    }
+    tail = fp;
+  }
+  return base_fpn;
 }
 
 /*
@@ -540,39 +563,17 @@ int print_list_pgn(struct pgn_t *ip) {
 /*
  * print_pgtbl - Dump all mapped PTEs with their 5-level directory indices
  */
-
-int print_pgtbl(struct pcb_t *caller, addr_t start, addr_t end) {
-  struct mm_struct *mm = caller->mm;
-  addr_t pgn_start = start >> PAGING64_ADDR_PT_SHIFT;
-  addr_t pgn_end =
-      (end == (addr_t)-1)
-          ? (mm->mmap ? (mm->mmap->vm_end >> PAGING64_ADDR_PT_SHIFT) : 0)
-          : (end >> PAGING64_ADDR_PT_SHIFT);
-  printf("Page table dump [pgn %lu .. %lu]:\n", (unsigned long)pgn_start,
-         (unsigned long)pgn_end);
-  for (addr_t pgn = pgn_start; pgn < pgn_end; ++pgn) {
-    addr_t *pte_ptr = get_pte(mm, pgn);
-    if (pte_ptr == NULL || *pte_ptr == 0)
-      continue;
-    addr_t pte = *pte_ptr;
-    addr_t pdg_idx, p4d_idx, pud_idx, pmd_idx, pt_idx;
-    get_pd_from_pagenum(pgn, &pdg_idx, &p4d_idx, &pud_idx, &pmd_idx, &pt_idx);
-    if (pte & PAGING_PTE_SWAPPED_MASK) {
-      printf("pgn [%4lu] PGD[%3lu] P4D[%3lu] PUD[%3lu] PMD[%3lu] PT[%3lu]"
-             "-> SWAPPED swpoff=0x%lx\n",
-             (unsigned long)pgn, (unsigned long)pdg_idx, (unsigned long)p4d_idx,
-             (unsigned long)pud_idx, (unsigned long)pmd_idx,
-             (unsigned long)pt_idx, (unsigned long)PAGING_SWP(pte));
-    } else if (pte & PAGING_PTE_PRESENT_MASK) {
-      addr_t fpn = PAGING_FPN(pte);
-      printf("pgn [%4lu] PGD[%3lu] P4D[%3lu] PUD[%3lu] PMD[%3lu] PT[%3lu]"
-             "-> fpn=0x%lx phys=0x%lx\n",
-             (unsigned long)pgn, (unsigned long)pdg_idx, (unsigned long)p4d_idx,
-             (unsigned long)pud_idx, (unsigned long)pmd_idx,
-             (unsigned long)pt_idx, (unsigned long)fpn,
-             (unsigned long)(fpn << PAGING64_ADDR_PT_SHIFT));
-    }
-  }
+int print_pgtbl(struct pcb_t *caller, addr_t start, addr_t end)
+{
+  struct mm_struct *mm = caller ? caller->mm : NULL;
+  addr_t *pgd = (mm && mm->pgd) ? mm->pgd : NULL;
+  addr_t *p4d = pgd ? (addr_t *)((uintptr_t)*pgd) : NULL;
+  addr_t *pud = p4d ? (addr_t *)((uintptr_t)*p4d) : NULL;
+  addr_t *pmd = pud ? (addr_t *)((uintptr_t)*pud) : NULL;
+  printf("print_pgtbl:\n");
+  printf(" PDG=%016lx P4g=%016lx PUD=%016lx PMD=%016lx\n",
+    (unsigned long)pgd, (unsigned long)p4d,
+    (unsigned long)pud, (unsigned long)pmd);
   return 0;
 }
 
