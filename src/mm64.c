@@ -311,7 +311,7 @@ addr_t krnl_alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framep
                 curr = next;
             }
             // Return the contiguous physical range back to the pool
-            MEMPHY_put_contiguous_freefp(caller->krnl->mram, base_fpn, req_pgnum);
+            MEMPHY_put_contiguous_freefp(caller->krnl->mram, base_fpn);
             *frm_lst = NULL;
             return -1;
         }
