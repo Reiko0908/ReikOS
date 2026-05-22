@@ -280,10 +280,10 @@ int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller) {
 /*
  * krnl_pg_getpage - get the page in ram - kernel pages must always be present, never swapped
  */
-int krnl_pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller) {
+int krnl_pg_getpage(struct mm_struct *mm, addr_t pgn, int *fpn, struct pcb_t *caller) {
   uint32_t pte = krnl_pte_get_entry(caller, pgn);
   if (!PAGING_PAGE_PRESENT(pte)) return -1;
-  *fpn = PAGING_FPN(pte);
+  *fpn = (int)PAGING_FPN(pte);
   return 0;
 }
 
@@ -293,14 +293,13 @@ int krnl_pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *calle
  *@value: value
  *
  */
-int pg_getval(struct mm_struct *mm, int addr, BYTE *data,
-              struct pcb_t *caller) {
-  int pgn = PAGING64_PGN(addr);
-  int off = PAGING64_OFFST(addr);
+int pg_getval(struct mm_struct *mm, int addr, BYTE *data, struct pcb_t *caller) {
+  addr_t pgn = PAGING64_PGN(addr);
+  addr_t off = PAGING64_OFFST(addr);
   int fpn;
 
   if (pg_getpage(mm, pgn, &fpn, caller) != 0) return -1;
-  int phyaddr = (fpn << PAGING64_ADDR_FPN_LOBIT) + off;
+  addr_t phyaddr = ((addr_t)fpn << PAGING64_ADDR_FPN_SHIFT) + off;
 
   struct sc_regs regs;
   regs.a1 = SYSMEM_IO_READ;
@@ -310,17 +309,18 @@ int pg_getval(struct mm_struct *mm, int addr, BYTE *data,
   *data = (BYTE)regs.a3;
   return 0;
 }
-
 /*
  * krnl_pg_getval - read value at given offset - kernel memory access
  */
-int krnl_pg_getval(struct mm_struct *mm, int addr, BYTE *data, struct pcb_t *caller) {
-  int pgn = PAGING64_PGN(addr);
-  int off = PAGING64_OFFST(addr);
+int krnl_pg_getval(struct mm_struct *mm, addr_t addr, BYTE *data, struct pcb_t *caller) {
+  addr_t pgn = PAGING64_PGN(addr);
+  addr_t off = PAGING64_OFFST(addr);
   int fpn;
-  if (krnl_pg_getpage(mm, pgn, &fpn, caller) != 0) return -1;
-  int phyaddr = (fpn << PAGING64_ADDR_FPN_LOBIT) + off;
-  return MEMPHY_read(caller->krnl->mram, phyaddr, data);
+
+  if (krnl_pg_getpage(mm, pgn, &fpn, caller) != 0)
+    return -1;
+
+  return MEMPHY_read(caller->krnl->mram, ((addr_t)fpn << PAGING64_ADDR_FPN_SHIFT) + off, data);
 }
 
 /*pg_setval - write value to given offset
@@ -329,35 +329,35 @@ int krnl_pg_getval(struct mm_struct *mm, int addr, BYTE *data, struct pcb_t *cal
  *@value: value
  *
  */
-int pg_setval(struct mm_struct *mm, int addr, BYTE value,
-              struct pcb_t *caller) {
-  int pgn = PAGING_PGN(addr);
-  int off = PAGING_OFFST(addr);
+int pg_setval(struct mm_struct *mm, int addr, BYTE value, struct pcb_t *caller) {
+  addr_t pgn = PAGING64_PGN(addr);
+  addr_t off = PAGING64_OFFST(addr);
   int fpn;
 
   if (pg_getpage(mm, pgn, &fpn, caller) != 0) return -1;
-  int phyaddr = (fpn << PAGING_ADDR_FPN_LOBIT) + off;
+  addr_t phyaddr = ((addr_t)fpn << PAGING64_ADDR_FPN_SHIFT) + off;
 
 
   struct sc_regs regs;
   regs.a1 = SYSMEM_IO_WRITE;
   regs.a2 = phyaddr;
   regs.a3 = value;
+
   _syscall(caller->krnl, caller->pid, 17, &regs);
   return 0;
 }
-
 /*
  * krnl_pg_setval - write value to given offset - kernel memory access
  */
-int krnl_pg_setval(struct mm_struct *mm, int addr, BYTE value, struct pcb_t *caller) {
-  int pgn = PAGING_PGN(addr);
-  int off = PAGING_OFFST(addr);
+int krnl_pg_setval(struct mm_struct *mm, addr_t addr, BYTE value, struct pcb_t *caller) {
+  addr_t pgn = PAGING64_PGN(addr);
+  addr_t off = PAGING64_OFFST(addr);
   int fpn;
 
-  if (krnl_pg_getpage(mm, pgn, &fpn, caller) != 0) return -1;
-  int phyaddr = (fpn << PAGING_ADDR_FPN_LOBIT) + off;
-  return MEMPHY_write(caller->krnl->mram, phyaddr, value);
+  if (krnl_pg_getpage(mm, pgn, &fpn, caller) != 0)
+    return -1;
+
+  return MEMPHY_write(caller->krnl->mram, ((addr_t)fpn << PAGING64_ADDR_FPN_SHIFT) + off, value);
 }
 
 /*__read - read value in region memory
