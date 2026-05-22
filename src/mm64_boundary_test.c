@@ -46,7 +46,8 @@ int main(void)
 
   /* Basic sanity on the requested split boundary. */
   assert(KRNL_DYNAMIC_END + 1ULL == KRNL_STATIC_START);
-  assert(strcmp(region_name(USER_SPACE_START), "USER") == 0);
+  assert(strcmp(region_name(USER_DYNAMIC_START), "USER_DYNAMIC") == 0);
+  assert(strcmp(region_name(USER_SPACE_START), "USER_STATIC") == 0);
   assert(strcmp(region_name(CANONICAL_HOLE_START), "CANONICAL_HOLE") == 0);
   assert(strcmp(region_name(KRNL_DYNAMIC_START), "KRNL_DYNAMIC") == 0);
   assert(strcmp(region_name(KRNL_STATIC_START), "KRNL_STATIC") == 0);

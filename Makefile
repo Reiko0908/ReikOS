@@ -27,7 +27,7 @@ HEADER = $(wildcard $(INCLUDE)/*.h)
 all: os
 #mem sched os
 boundary_test: $(OBJ) $(OBJ)/mm64_boundary_test.o
-	$(MAKE) $(LFLAGS) $(OBJ)/mm64_boundary_test.o -o boundary_test $(LIB)
+	$(CC) $(LFLAGS) $(OBJ)/mm64.o $(OBJ)/mm64_boundary_test.o -o boundary_test $(LIB)
 
 # Just compile memory management modules
 mem: $(MEM_OBJ)
