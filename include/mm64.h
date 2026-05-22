@@ -61,6 +61,25 @@ static inline int mm64_kernel_dynamic_range_fits(addr_t mapstart, int incpgnum)
 	return 1;
 }
 
+static inline int mm64_user_range_fits(addr_t mapstart, int incpgnum)
+{
+	if (incpgnum <= 0)
+		return 0;
+
+	addr_t mapsz = (addr_t)incpgnum * PAGING64_PAGESZ;
+	if (mapsz / PAGING64_PAGESZ != (addr_t)incpgnum)
+		return 0; /* multiplication overflow */
+
+	/* must be fully inside USER_SPACE and not cross into canonical hole */
+	if (mapstart < USER_SPACE_START || mapstart > USER_SPACE_END)
+		return 0;
+
+	if (mapstart > USER_SPACE_END - (mapsz - 1))
+		return 0; /* crosses into canonical hole */
+
+	return 1;
+}
+
 /* OFFSET */
 #define PAGING64_ADDR_OFFST_HIBIT 11
 #define PAGING64_ADDR_OFFST_LOBIT 0

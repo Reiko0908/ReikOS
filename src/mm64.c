@@ -285,59 +285,54 @@ addr_t alloc_pages_range(struct pcb_t *caller, int req_pgnum,
   return 0;
 }
 
-addr_t krnl_alloc_pages_range(struct pcb_t *caller, int req_pgnum,
-                              struct framephy_struct **frm_lst) {
-  if (!caller || !caller->krnl || !caller->krnl->mram)
-    return -1;
-  if (!frm_lst || req_pgnum <= 0)
-    return -1;
+addr_t krnl_alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struct **frm_lst) {
+    // 1. Validation
+    if (!caller || !caller->krnl || !caller->krnl->mram || !frm_lst || req_pgnum <= 0)
+        return -1;
 
-  *frm_lst = NULL;
-  struct framephy_struct *tail = NULL;
-  addr_t base_fpn = 0;
+    // 2. Request the contiguous block from Physical Memory
+    addr_t base_fpn;
+    if (MEMPHY_get_contiguous_freefp(caller->krnl->mram, req_pgnum, &base_fpn) != 0)
+        return -1;
 
-  for (int pgit = 0; pgit < req_pgnum; pgit++) {
-    addr_t fpn;
-    if (MEMPHY_get_freefp(caller->krnl->mram, &fpn) != 0) {
-      while (*frm_lst) {
-        struct framephy_struct *next = (*frm_lst)->fp_next;
-        MEMPHY_put_freefp(caller->krnl->mram, (*frm_lst)->fpn);
-        free(*frm_lst);
-        *frm_lst = next;
-      }
-      return -1;
+    *frm_lst = NULL;
+    struct framephy_struct *tail = NULL;
+
+    // 3. Build the metadata linked list
+    for (int i = 0; i < req_pgnum; i++) {
+        struct framephy_struct *newfp = malloc(sizeof(struct framephy_struct));
+        
+        if (!newfp) {
+            // ROLLBACK: If malloc fails, free everything allocated so far
+            struct framephy_struct *curr = *frm_lst;
+            while (curr) {
+                struct framephy_struct *next = curr->fp_next;
+                free(curr);
+                curr = next;
+            }
+            // Return the contiguous physical range back to the pool
+            MEMPHY_put_contiguous_freefp(caller->krnl->mram, base_fpn, req_pgnum);
+            *frm_lst = NULL;
+            return -1;
+        }
+
+        // Initialize metadata
+        newfp->fpn = base_fpn + i;
+        newfp->owner = caller->krnl->mm;
+        newfp->fp_next = NULL;
+
+        // Set ownership in the physical layer (optional, depends on your API)
+        MEMPHY_set_fp_owner(caller->krnl->mram, newfp->fpn, caller->krnl->mm);
+
+        if (*frm_lst == NULL) {
+            *frm_lst = newfp;
+        } else {
+            tail->fp_next = newfp;
+        }
+        tail = newfp;
     }
-    if (pgit == 0)
-      base_fpn = fpn;
 
-    MEMPHY_set_fp_owner(caller->krnl->mram, fpn, caller->krnl->mm);
-
-    struct framephy_struct *newfp = malloc(sizeof(struct framephy_struct));
-    if (!newfp) {
-      MEMPHY_put_freefp(caller->krnl->mram, fpn);
-      while (*frm_lst) {
-        struct framephy_struct *next = (*frm_lst)->fp_next;
-        MEMPHY_put_freefp(caller->krnl->mram, (*frm_lst)->fpn);
-        free(*frm_lst);
-        *frm_lst = next;
-      }
-      return -1;
-    }
-
-    newfp->fpn = fpn;
-    newfp->order = 0;
-    newfp->owner = caller->krnl->mm;
-    newfp->fp_next = NULL;
-    if (*frm_lst == NULL) {
-      *frm_lst = newfp;
-      tail = newfp;
-    } else {
-      tail->fp_next = newfp;
-      tail = newfp;
-    }
-  }
-
-  return base_fpn;
+    return base_fpn;
 }
 
 /*
@@ -349,6 +344,25 @@ addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
   struct framephy_struct *frm_lst = NULL;
   int ret_alloc = alloc_pages_range(caller, incpgnum, &frm_lst);
   if (ret_alloc != 0 || frm_lst == NULL) return -1;
+
+  /* Validate that the user mapping stays within user space and does not
+     cross into the canonical hole */
+  if (!mm64_user_range_fits(mapstart, incpgnum)) {
+    printf("[ERROR] vm_map_ram: user mapping would cross into canonical hole or out of user space. mapstart=0x%016lx incpgnum=%d\n",
+           (unsigned long)mapstart, incpgnum);
+    printf("         USER_SPACE_START=0x%016lx USER_SPACE_END=0x%016lx CANONICAL_HOLE_START=0x%016lx CANONICAL_HOLE_END=0x%016lx\n",
+           (unsigned long)USER_SPACE_START, (unsigned long)USER_SPACE_END,
+           (unsigned long)CANONICAL_HOLE_START, (unsigned long)CANONICAL_HOLE_END);
+    /* free frames */
+    struct framephy_struct *fpit = frm_lst;
+    while (fpit != NULL) {
+      struct framephy_struct *next = fpit->fp_next;
+      MEMPHY_put_freefp(caller->krnl->mram, fpit->fpn);
+      free(fpit);
+      fpit = next;
+    }
+    return -1;
+  }
 
   if (vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg) < 0) {
     struct framephy_struct *fpit = frm_lst;
