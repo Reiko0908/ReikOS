@@ -494,14 +494,13 @@ int init_mm(struct mm_struct *mm, struct pcb_t *caller) {
     pud[0] = (addr_t)pmd;
     pmd[0] = (addr_t)pt;
 
-    __init_mm(mm, pgd, 0);
+    __init_mm(mm, pgd, USER_DYNAMIC_START);
     mm->kcpooltbl = NULL;
     return 0;
 }
 
 int krnl_init_mm(struct mm_struct *mm, struct krnl_t *krnl) {
-  addr_t base_addr = KERNEL_DYNAMIC_START;
-  __init_mm(mm, krnl->krnl_pgd, base_addr);
+  __init_mm(mm, krnl->krnl_pgd, KERNEL_DYNAMIC_START);
   mm->kcpooltbl = calloc(MAX_CACHE_POOL, sizeof(struct kcache_pool_struct));
   if (!mm->kcpooltbl) return -1;
   return 0;
