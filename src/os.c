@@ -1,16 +1,17 @@
-#include "../include/cpu.h"
-#include "../include/timer.h"
-#include "../include/sched.h"
-#include "../include/loader.h"
-#include "../include/mm.h"
+#include "cpu.h"
+#include "timer.h"
+#include "sched.h"
+#include "loader.h"
+#include "mm.h"
 #ifdef MM64
-#include "../include/mm64.h"
+#include "mm64.h"
 #endif
 
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sched.h>
 
 static int time_slot;
 static int num_cpus;
@@ -46,38 +47,37 @@ struct cpu_args {
 	int id;
 };
 
+
 static void * cpu_routine(void * args) {
 	struct timer_id_t * timer_id = ((struct cpu_args*)args)->timer_id;
 	int id = ((struct cpu_args*)args)->id;
 	/* Check for new process in ready queue */
 	int time_left = 0;
 	struct pcb_t * proc = NULL;
-	
+
 	while (1) {
 		/* Check the status of current process */
 		if (proc == NULL) {
 			/* No process is running, the we load new process from
 		 	* ready queue */
-      sched_wait_for_loader(current_time(), done);
+			sched_wait_for_loader(current_time(), done);
 			proc = get_proc();
 			if (proc == NULL) {
-        next_slot(timer_id);
-        continue; /* First load failed. skip dummy load */
-      }
-		} else if (proc->pc == proc->code->size) {
+                           next_slot(timer_id);
+                           continue; /* First load failed. skip dummy load */
+                        }
+		}else if (proc->pc == proc->code->size) {
 			/* The porcess has finish it job */
 			printf("\tCPU %d: Processed %2d has finished\n",
 				id ,proc->pid);
 			free(proc);
-      sched_wait_for_loader(current_time(), done);
 			proc = get_proc();
 			time_left = 0;
-		} else if (time_left == 0) {
+		}else if (time_left == 0) {
 			/* The process has done its job in current time slot */
 			printf("\tCPU %d: Put process %2d to run queue (pc=%d/%d)\n",
 				id, proc->pid, proc->pc, proc->code->size);
 			put_proc(proc);
-      sched_wait_for_loader(current_time(), done);
 			proc = get_proc();
 		}
 
@@ -86,12 +86,12 @@ static void * cpu_routine(void * args) {
 			/* No process to run, exit */
 			printf("\tCPU %d stopped\n", id);
 			break;
-		} else if (proc == NULL) {
+		}else if (proc == NULL) {
 			/* There may be new processes to run in
 			 * next time slots, just skip current slot */
 			next_slot(timer_id);
 			continue;
-		} else if (time_left == 0) {
+		}else if (time_left == 0) {
 			printf("\tCPU %d: Dispatched process %2d\n",
 				id, proc->pid);
 			time_left = time_slot;
@@ -109,10 +109,9 @@ static void * cpu_routine(void * args) {
 }
 
 static void ld_next_slot(struct timer_id_t * timer_id) {
-  sched_signal_loader_done(current_time());
-  next_slot(timer_id);
+    sched_signal_loader_done(current_time());
+    next_slot(timer_id);
 }
-
 static void * ld_routine(void * args) {
 #ifdef MM_PAGING
 	struct memphy_struct* mram = ((struct mmpaging_ld_args *)args)->mram;
@@ -131,14 +130,16 @@ static void * ld_routine(void * args) {
 	os.krnl_pmd = calloc(512, sizeof(addr_t));
 	os.krnl_pt  = calloc(PAGING64_MAX_PGN, sizeof(addr_t));
 
-	/* Wire up the page-table path for KERNEL_DYNAMIC_START.
-	 * All kernel virtual pages share this single pt array (indexed by pt_idx).
+	/* Wire up the kernel page-table root using the configured kernel base.
+	 * Do not hardcode the split here; derive the indices from mm64.h so the
+	 * debug printer and the mapper walk the same root path.
 	 */
-	addr_t kbase = KERNEL_DYNAMIC_START;
-	os.krnl_pgd[PAGING64_ADDR_PGD(kbase)] = (addr_t)os.krnl_p4d;
-	os.krnl_p4d[PAGING64_ADDR_P4D(kbase)] = (addr_t)os.krnl_pud;
-	os.krnl_pud[PAGING64_ADDR_PUD(kbase)] = (addr_t)os.krnl_pmd;
-	os.krnl_pmd[PAGING64_ADDR_PMD(kbase)] = (addr_t)os.krnl_pt;
+	addr_t k_pgd, k_p4d, k_pud, k_pmd, k_pt;
+	get_pd_from_address(KRNL_SPACE_BASE_ADDR, &k_pgd, &k_p4d, &k_pud, &k_pmd, &k_pt);
+	os.krnl_pgd[k_pgd] = (addr_t)os.krnl_p4d;
+	os.krnl_p4d[k_p4d] = (addr_t)os.krnl_pud;
+	os.krnl_pud[0]   = (addr_t)os.krnl_pmd;
+	os.krnl_pmd[0]   = (addr_t)os.krnl_pt;
 #ifdef MM_PAGING
 	/* Init kernel mm_struct so kmalloc works */
 	os.mm = malloc(sizeof(struct mm_struct));
@@ -178,7 +179,7 @@ static void * ld_routine(void * args) {
 	free(ld_processes.path);
 	free(ld_processes.start_time);
 	done = 1;
-  sched_signal_loader_done(current_time());
+	sched_signal_loader_done(1000000); // Signal finish
 	detach_event(timer_id);
 	pthread_exit(NULL);
 }
@@ -312,5 +313,7 @@ int main(int argc, char * argv[]) {
 
 	/* Stop timer */
 	stop_timer();
+
 	return 0;
+
 }

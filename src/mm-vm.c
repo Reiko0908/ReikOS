@@ -132,7 +132,9 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz) {
     return -1;
   }
 
-  cur_vma->sbrk = cur_vma->vm_end;
+  /* Ensure vm_end and sbrk reflect the actual mapped region returned */
+  cur_vma->vm_end = newrg.rg_end;
+  cur_vma->sbrk = newrg.rg_end;
   return 0;
 }
 
@@ -200,7 +202,7 @@ addr_t vm_map_kernel(struct pcb_t *caller, addr_t astart, addr_t aend,
   return krnl_vm_map_ram(caller, astart, aend, mapstart, incpgnum, ret_rg);
 }
 
-int get_symrg_id_by_addr(struct mm_struct *mm, addr_t addr) {
+int get_symrgid_by_addr(struct mm_struct *mm, addr_t addr) {
   if (mm == NULL) return -1;
   for (int i = 0; i < PAGING_MAX_SYMTBL_SZ; i++) {
     struct vm_rg_struct *rg = &mm->symrgtbl[i];

@@ -1,6 +1,9 @@
 # Ignore build artifacts and output
 obj/
 output/
+run/
+
+.gitignore
 
 # Object files and listings
 *.o

@@ -27,8 +27,6 @@ int init_pte(addr_t *pte, int pre, /* present */
   if (pre != 0) {
     if (swp == 0) {
       /* Page is in RAM */
-      if (fpn == 0)
-        return -1; /* FPN 0 is reserved / invalid */
       SETBIT(*pte, PAGING_PTE_PRESENT_MASK);
       CLRBIT(*pte, PAGING_PTE_SWAPPED_MASK);
       CLRBIT(*pte, PAGING_PTE_DIRTY_MASK);
@@ -284,8 +282,55 @@ addr_t krnl_alloc_pages_range(struct pcb_t *caller, int req_pgnum,
                               struct framephy_struct **frm_lst) {
   if (!caller || !caller->krnl || !caller->krnl->mram)
     return -1;
-  addr_t base_fpn;
-  return MEMPHY_get_contiguous_freefp(caller->krnl->mram, req_pgnum, &base_fpn);
+  if (!frm_lst || req_pgnum <= 0)
+    return -1;
+
+  *frm_lst = NULL;
+  struct framephy_struct *tail = NULL;
+  addr_t base_fpn = 0;
+
+  for (int pgit = 0; pgit < req_pgnum; pgit++) {
+    addr_t fpn;
+    if (MEMPHY_get_freefp(caller->krnl->mram, &fpn) != 0) {
+      while (*frm_lst) {
+        struct framephy_struct *next = (*frm_lst)->fp_next;
+        MEMPHY_put_freefp(caller->krnl->mram, (*frm_lst)->fpn);
+        free(*frm_lst);
+        *frm_lst = next;
+      }
+      return -1;
+    }
+    if (pgit == 0)
+      base_fpn = fpn;
+
+    MEMPHY_set_fp_owner(caller->krnl->mram, fpn, caller->krnl->mm);
+
+    struct framephy_struct *newfp = malloc(sizeof(struct framephy_struct));
+    if (!newfp) {
+      MEMPHY_put_freefp(caller->krnl->mram, fpn);
+      while (*frm_lst) {
+        struct framephy_struct *next = (*frm_lst)->fp_next;
+        MEMPHY_put_freefp(caller->krnl->mram, (*frm_lst)->fpn);
+        free(*frm_lst);
+        *frm_lst = next;
+      }
+      return -1;
+    }
+
+    newfp->fpn = fpn;
+    newfp->order = 0;
+    newfp->owner = caller->krnl->mm;
+    newfp->fp_next = NULL;
+    if (*frm_lst == NULL) {
+      *frm_lst = newfp;
+      tail = newfp;
+    } else {
+      tail->fp_next = newfp;
+      tail = newfp;
+    }
+  }
+
+  return base_fpn;
 }
 
 /*

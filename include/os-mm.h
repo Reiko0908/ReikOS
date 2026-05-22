@@ -11,7 +11,6 @@
 #ifndef OSMM_H
 #define OSMM_H
 
-// #include <pthread.h>
 #include <stdint.h>
 
 #define MM_PAGING
@@ -20,36 +19,29 @@
 #define MAX_CACHE_POOL 100
 #define BUDDY_MAX_ORDER 10
 
-/* 
+/*
  * @bksysnet: in long address mode of 64bit or original 32bit
  * the address type need to be redefined
  */
 
-#ifdef MM64
+
 #define ADDR_TYPE uint64_t
-#else
-#define ADDR_TYPE uint32_t
-#endif
 
 typedef char BYTE;
 typedef ADDR_TYPE addr_t;
 //typedef unsigned int uint32_t;
 
-/* 
+/*
  * @bksysnet: the format string need to be redefined
  *            based on the address mode
  */
-#ifdef MM64
 #define FORMAT_ADDR "%lu"
 #define FORMATX_ADDR "%16p"
-#else
-#define FORMAT_ADDR "%d"
-#define FORMATX_ADDR "%08x"
-#endif
+
 
 struct pgn_t{
   addr_t pgn;
-  struct pgn_t *pg_next; 
+  struct pgn_t *pg_next;
 };
 
 /*
@@ -108,7 +100,7 @@ struct slab_struct {
    struct slab_struct *next;
 };
 
-/* 
+/*
  * Kernel cache pool struct
  */
 struct kcache_pool_struct {
@@ -122,7 +114,7 @@ struct kcache_pool_struct {
 #endif
 };
 
-/* 
+/*
  * Memory management struct
  */
 struct mm_struct {
@@ -174,7 +166,6 @@ struct framephy_struct {
 
 
 struct memphy_struct {
-//   pthread_mutex_t lock;
   BYTE   *storage;
   addr_t  maxsz;
   int     rdmflg;
@@ -182,7 +173,7 @@ struct memphy_struct {
 
   struct buddy_system buddy;
   int     buddy_initialized;
- 
+
   struct framephy_struct *free_fp_list;
   struct framephy_struct *used_fp_list;
 };

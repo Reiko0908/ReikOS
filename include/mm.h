@@ -208,6 +208,6 @@ int print_list_vma(struct vm_area_struct *rg);
 int print_list_pgn(struct pgn_t *ip);
 int print_pgtbl(struct pcb_t *ip, addr_t start, addr_t end);
 
-int get_symrg_id_by_addr(struct mm_struct *mm, addr_t addr);
+int get_symrgid_by_addr(struct mm_struct *mm, addr_t addr);
 int get_vmaid_by_addr(struct mm_struct *mm, addr_t addr);
 #endif
