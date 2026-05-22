@@ -46,13 +46,55 @@ struct cpu_args {
 	int id;
 };
 
+static pthread_mutex_t sync_log_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void sync_printf(const char *fmt, ...)
+{
+    if (fmt == NULL) {
+        return;
+    }
+
+    va_list args;
+    va_start(args, fmt);
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int needed = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+    if (needed < 0) {
+        va_end(args_copy);
+        return;
+    }
+
+    size_t msg_len = (size_t)needed;
+    char *msg = (char *)malloc(msg_len + 2);
+    if (msg == NULL) {
+        va_end(args_copy);
+        return;
+    }
+    vsnprintf(msg, msg_len + 1, fmt, args_copy);
+    va_end(args_copy);
+
+    if (msg_len == 0 || msg[msg_len - 1] != '\n') {
+        msg[msg_len] = '\n';
+        msg[msg_len + 1] = '\0';
+    }
+
+    pthread_mutex_lock(&sync_log_lock);
+    fputs(msg, stdout);
+    fflush(stdout);
+    pthread_mutex_unlock(&sync_log_lock);
+
+    free(msg);
+}
+
 static void * cpu_routine(void * args) {
 	struct timer_id_t * timer_id = ((struct cpu_args*)args)->timer_id;
 	int id = ((struct cpu_args*)args)->id;
 	/* Check for new process in ready queue */
 	int time_left = 0;
 	struct pcb_t * proc = NULL;
-	
+	next_slot(timer_id);
+
 	while (1) {
 		/* Check the status of current process */
 		if (proc == NULL) {
@@ -66,33 +108,31 @@ static void * cpu_routine(void * args) {
       }
 		} else if (proc->pc == proc->code->size) {
 			/* The porcess has finish it job */
-			printf("\tCPU %d: Processed %2d has finished\n",
+			sync_printf("\tCPU %d: Processed %2d has finished\n",
 				id ,proc->pid);
 			free(proc);
-      sched_wait_for_loader(current_time(), done);
 			proc = get_proc();
 			time_left = 0;
-		} else if (time_left == 0) {
+		}else if (time_left == 0) {
 			/* The process has done its job in current time slot */
-			printf("\tCPU %d: Put process %2d to run queue\n",
-				id, proc->pid);
+			sync_printf("\tCPU %d: Put process %2d to run queue (pc=%d/%d)\n",
+				id, proc->pid, proc->pc, proc->code->size);
 			put_proc(proc);
-      sched_wait_for_loader(current_time(), done);
 			proc = get_proc();
 		}
 
 		/* Recheck process status after loading new process */
 		if (proc == NULL && done) {
 			/* No process to run, exit */
-			printf("\tCPU %d stopped\n", id);
+			sync_printf("\tCPU %d stopped\n", id);
 			break;
 		} else if (proc == NULL) {
 			/* There may be new processes to run in
 			 * next time slots, just skip current slot */
 			next_slot(timer_id);
 			continue;
-		} else if (time_left == 0) {
-			printf("\tCPU %d: Dispatched process %2d\n",
+		}else if (time_left == 0) {
+			sync_printf("\tCPU %d: Dispatched process %2d\n",
 				id, proc->pid);
 			time_left = time_slot;
 		}
@@ -137,6 +177,9 @@ static void * ld_routine(void * args) {
 	 */
 	os.krnl_pgd[511] = (addr_t)os.krnl_p4d;
 	os.krnl_p4d[256] = (addr_t)os.krnl_pud;
+R, &k_pgd, &k_p4d, &k_pud, &k_pmd, &k_pt);
+	os.krnl_pgd[k_pgd] = (addr_t)os.krnl_p4d;
+	os.krnl_p4d[k_p4d] = (addr_t)os.krnl_pud;
 	os.krnl_pud[0]   = (addr_t)os.krnl_pmd;
 	os.krnl_pmd[0]   = (addr_t)os.krnl_pt;
 #ifdef MM_PAGING
@@ -149,7 +192,7 @@ static void * ld_routine(void * args) {
 	os.krnl_pgd = malloc(PAGING_MAX_PGN * sizeof(uint32_t));
 #endif
 	i=0;
-	printf("ld_routine\n");
+	sync_printf("ld_routine\n");
 	while (i < num_processes) {
 		struct pcb_t * proc = load(ld_processes.path[i]);
 		struct krnl_t * krnl = proc->krnl = &os;
@@ -168,7 +211,7 @@ static void * ld_routine(void * args) {
 		krnl->mswp = mswp;
 		krnl->active_mswp = active_mswp;
 #endif
-		printf("\tLoaded a process at %s, PID: %d PRIO: %ld\n",
+		sync_printf("\tLoaded a process at %s, PID: %d PRIO: %ld\n",
 			ld_processes.path[i], proc->pid, ld_processes.prio[i]);
 		add_proc(proc);
 		free(ld_processes.path[i]);
@@ -179,6 +222,7 @@ static void * ld_routine(void * args) {
 	free(ld_processes.start_time);
 	done = 1;
   sched_signal_loader_done(current_time());
+l finish
 	detach_event(timer_id);
 	pthread_exit(NULL);
 }
@@ -186,7 +230,7 @@ static void * ld_routine(void * args) {
 static void read_config(const char * path) {
 	FILE * file;
 	if ((file = fopen(path, "r")) == NULL) {
-		printf("Cannot find configure file at %s\n", path);
+		sync_printf("Cannot find configure file at %s\n", path);
 		exit(1);
 	}
 	fscanf(file, "%d %d %d\n", &time_slot, &num_cpus, &num_processes);
@@ -240,7 +284,7 @@ static void read_config(const char * path) {
 int main(int argc, char * argv[]) {
 	/* Read config */
 	if (argc != 2) {
-		printf("Usage: os [path to configure file]\n");
+		sync_printf("Usage: os [path to configure file]\n");
 		return 1;
 	}
 	char path[100];
@@ -312,5 +356,6 @@ int main(int argc, char * argv[]) {
 
 	/* Stop timer */
 	stop_timer();
+
 	return 0;
 }
