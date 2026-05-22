@@ -14,18 +14,20 @@ LFLAGS = -Wall $(DEBUG)
 vpath %.c $(SRC)
 vpath %.h $(INCLUDE)
 
-MAKE = $(CC) $(INC) 
+MAKE = $(CC) $(INC)
 
 # Object files needed by modules -fsanitize=address
 MEM_OBJ = $(addprefix $(OBJ)/, paging.o mem.o cpu.o loader.o)
 SYSCALL_OBJ = $(addprefix $(OBJ)/, syscall.o sys_mem.o sys_listsyscall.o sys_testhandler.o)
-OS_OBJ = $(addprefix $(OBJ)/, cpu.o mem.o loader.o queue.o os.o sched.o timer.o mm-vm.o mm64.o mm.o mm-memphy.o libstd.o libmem.o)
+OS_OBJ = $(addprefix $(OBJ)/, cpu.o mem.o loader.o queue.o os.o sched.o timer.o mm-vm.o mm64.o mm.o mm-memphy.o libstd.o libmem.o memlog.o)
 OS_OBJ += $(SYSCALL_OBJ)
 SCHED_OBJ = $(addprefix $(OBJ)/, cpu.o loader.o)
 HEADER = $(wildcard $(INCLUDE)/*.h)
- 
+
 all: os
 #mem sched os
+boundary_test: $(OBJ) $(OBJ)/mm64_boundary_test.o
+	$(MAKE) $(LFLAGS) $(OBJ)/mm64_boundary_test.o -o boundary_test $(LIB)
 
 # Just compile memory management modules
 mem: $(MEM_OBJ)
@@ -39,7 +41,7 @@ sched: $(SCHED_OBJ)
 syscalltbl.lst: $(SRC)/syscall.tbl
 	@echo $(OS_OBJ)
 	chmod +x $(SRC)/syscalltbl.sh
-	$(SRC)/syscalltbl.sh $< $(SRC)/$@ 
+	$(SRC)/syscalltbl.sh $< $(SRC)/$@
 #	mv $(OBJ)/syscalltbl.lst $(INCLUDE)/
 
 # Compile the whole OS simulation

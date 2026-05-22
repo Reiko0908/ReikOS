@@ -18,14 +18,15 @@
 //#define MM_FIXED_MEMSZ
 //#define VMDBG 1
 //#define MMDBG 1
-// #define IODUMP 1
-#define PAGETBL_DUMP 1
+//#define IODUMP 1
+//#define PAGETBL_DUMP 1
+#define MEMLOG 1
 
-/* 
+/*
  * @bksysnet:
  *    The address mode must be explicitly define in MM64 or no-MM64
  *    by commenting one of these following lines and uncommenting the other
- *      
+ *
  */
 #define MM64 1
 //#undef MM64
