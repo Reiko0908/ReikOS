@@ -87,7 +87,7 @@ int enlist_vm_freerg_list(struct mm_struct *mm, struct vm_rg_struct *rg_elmt) {
  *
  */
 struct vm_rg_struct *get_symrg_byid(struct mm_struct *mm, int rgid) {
-  if (rgid < 0 || rgid > PAGING_MAX_SYMTBL_SZ)
+  if (rgid < 0 || rgid >= PAGING_MAX_SYMTBL_SZ)
     return NULL;
 
   return &mm->symrgtbl[rgid];
@@ -254,7 +254,7 @@ int libfree(struct pcb_t *proc, uint32_t reg_index) {
  *@caller: caller
  *
  */
-int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller) {
+int pg_getpage(struct mm_struct *mm, addr_t pgn, int *fpn, struct pcb_t *caller) {
   uint32_t pte = pte_get_entry(caller, pgn);
   if (!PAGING_PAGE_PRESENT(pte)) {
     addr_t vicpgn, vicfpn, swpfpn;
@@ -293,7 +293,7 @@ int krnl_pg_getpage(struct mm_struct *mm, addr_t pgn, int *fpn, struct pcb_t *ca
  *@value: value
  *
  */
-int pg_getval(struct mm_struct *mm, int addr, BYTE *data, struct pcb_t *caller) {
+int pg_getval(struct mm_struct *mm, addr_t addr, BYTE *data, struct pcb_t *caller) {
   addr_t pgn = PAGING64_PGN(addr);
   addr_t off = PAGING64_OFFST(addr);
   int fpn;
@@ -329,7 +329,7 @@ int krnl_pg_getval(struct mm_struct *mm, addr_t addr, BYTE *data, struct pcb_t *
  *@value: value
  *
  */
-int pg_setval(struct mm_struct *mm, int addr, BYTE value, struct pcb_t *caller) {
+int pg_setval(struct mm_struct *mm, addr_t addr, BYTE value, struct pcb_t *caller) {
   addr_t pgn = PAGING64_PGN(addr);
   addr_t off = PAGING64_OFFST(addr);
   int fpn;
