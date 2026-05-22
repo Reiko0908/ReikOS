@@ -26,5 +26,3 @@ int libkmem_cache_alloc(struct pcb_t *, uint32_t, uint32_t);
 int libkmem_cache_pool_create(struct pcb_t*, uint32_t, uint32_t, uint32_t);
 int libkmem_copy_from_user(struct pcb_t*, uint32_t, uint32_t, uint32_t, uint32_t);
 int libkmem_copy_to_user(struct pcb_t*, uint32_t, uint32_t, uint32_t, uint32_t);
-void libmem_mmvm_lock(void);
-void libmem_mmvm_unlock(void);
