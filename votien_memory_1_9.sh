@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 
 ./os votien_memory_1 > run/votien_memory_1.txt 2>&1
 ./os votien_memory_2 > run/votien_memory_2.txt 2>&1

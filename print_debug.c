@@ -5,6 +5,8 @@
 /* ── forward declarations ──────────────────────────────────────────── */
 static uint32_t pte_get_entry_print(struct mm_struct *mm, addr_t pgn);
 static void print_symtbl_merged(struct mm_struct *user_mm, struct mm_struct *krnl_mm);
+static const char *addr_region_name(addr_t addr);
+static const char *rg_region_name(addr_t start, addr_t end);
 
 /* ══════════════════════════════════════════════════════════════════════
  *  Low-level helpers
@@ -17,6 +19,29 @@ void print_frame_list(const char *name, struct framephy_struct *head)
     for (; head; head = head->fp_next)
         printf("[%lu] ", (unsigned long)head->fpn);
     printf("\n");
+}
+
+static const char *addr_region_name(addr_t addr)
+{
+    if (IS_USER_SPACE(addr))
+        return "USER";
+    if (IS_CANONICAL_HOLE(addr))
+        return "CANONICAL_HOLE";
+    if (IS_KERNEL_DYNAMIC_SPACE(addr))
+        return "KERNEL_DYNAMIC";
+    if (IS_KERNEL_STATIC_SPACE(addr))
+        return "KERNEL_STATIC";
+    return "UNKNOWN";
+}
+
+static const char *rg_region_name(addr_t start, addr_t end)
+{
+    const char *region_start = addr_region_name(start);
+    const char *region_end = addr_region_name(end == 0 ? 0 : end - 1);
+
+    if (strcmp(region_start, region_end) == 0)
+        return region_start;
+    return "CROSS_REGION";
 }
 
 void print_storage_int(struct memphy_struct *m)
@@ -153,17 +178,19 @@ static void print_symtbl_merged(struct mm_struct *user_mm, struct mm_struct *krn
     int empty = 1;
     for (int i = 0; i < PAGING_MAX_SYMTBL_SZ; i++) {
         if (user_mm && (user_mm->symrgtbl[i].rg_start != 0 || user_mm->symrgtbl[i].rg_end != 0)) {
-            printf("[rg%d:0x%lx-0x%lx mode=%s] ", i,
+            printf("[rg%d:0x%lx-0x%lx mode=%s region=%s] ", i,
                    (unsigned long)user_mm->symrgtbl[i].rg_start,
                    (unsigned long)user_mm->symrgtbl[i].rg_end,
-                   user_mm->symrgtbl[i].mode_bit ? "USER" : "KERNEL");
+                   user_mm->symrgtbl[i].mode_bit ? "USER" : "KERNEL",
+                   rg_region_name(user_mm->symrgtbl[i].rg_start, user_mm->symrgtbl[i].rg_end));
             empty = 0;
         }
         if (krnl_mm && (krnl_mm->symrgtbl[i].rg_start != 0 || krnl_mm->symrgtbl[i].rg_end != 0)) {
-            printf("[rg%d:0x%lx-0x%lx mode=%s] ", i,
+            printf("[rg%d:0x%lx-0x%lx mode=%s region=%s] ", i,
                    (unsigned long)krnl_mm->symrgtbl[i].rg_start,
                    (unsigned long)krnl_mm->symrgtbl[i].rg_end,
-                   krnl_mm->symrgtbl[i].mode_bit ? "USER" : "KERNEL");
+                   krnl_mm->symrgtbl[i].mode_bit ? "USER" : "KERNEL",
+                   rg_region_name(krnl_mm->symrgtbl[i].rg_start, krnl_mm->symrgtbl[i].rg_end));
             empty = 0;
         }
     }
