@@ -191,6 +191,8 @@ int buddy_free(struct buddy_system *bs, int order, int fpn);
 /* MEM/PHY protypes */
 int MEMPHY_get_freefp(struct memphy_struct *mp, addr_t *fpn);
 int MEMPHY_put_freefp(struct memphy_struct *mp, addr_t fpn);
+int fp_list_push(struct framephy_struct **head, addr_t fpn, int order);
+int fp_list_remove(struct framephy_struct **head, addr_t target);
 int MEMPHY_get_contiguous_freefp(struct memphy_struct *mp, int req_pgnum, addr_t *retfpn);
 int MEMPHY_put_contiguous_freefp(struct memphy_struct *mp, addr_t fpn);
 int MEMPHY_set_fp_owner(struct memphy_struct *mp, addr_t fpn, void *owner);
