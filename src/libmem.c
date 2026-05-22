@@ -93,6 +93,41 @@ struct vm_rg_struct *get_symrg_byid(struct mm_struct *mm, int rgid) {
   return &mm->symrgtbl[rgid];
 }
 
+static void refresh_vma_sentinel(struct vm_area_struct *vma)
+{
+  if (!vma || vma->sbrk != vma->vm_end)
+    return;
+
+  /* Purge stale sentinels (zero-length nodes at the wrong address) */
+  struct vm_rg_struct **sp = &vma->vm_freerg_list;
+  while (*sp) {
+    struct vm_rg_struct *cur = *sp;
+    if (cur->rg_start == cur->rg_end && cur->rg_start != vma->vm_end) {
+      *sp = cur->rg_next;
+      free(cur);
+    } else {
+      sp = &cur->rg_next;
+    }
+  }
+
+  /* Add sentinel only if not already present */
+  struct vm_rg_struct *rg = vma->vm_freerg_list;
+  while (rg) {
+    if (rg->rg_start == vma->vm_end && rg->rg_end == vma->vm_end)
+      return;  /* already there */
+    rg = rg->rg_next;
+  }
+
+  struct vm_rg_struct *sentinel = malloc(sizeof(struct vm_rg_struct));
+  if (sentinel) {
+    sentinel->rg_start = vma->vm_end;
+    sentinel->rg_end   = vma->vm_end;
+    sentinel->vmaid    = vma->vm_id;
+    sentinel->rg_next  = vma->vm_freerg_list;
+    vma->vm_freerg_list = sentinel;
+  }
+}
+
 /*__alloc - allocate a region memory
  *@caller: caller
  *@vmaid: ID vm area to alloc memory region
@@ -124,6 +159,11 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
     caller->mm->symrgtbl[rgid].vmaid = rgnode.vmaid;
     *alloc_addr = rgnode.rg_start;
 
+    struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
+    if (cur_vma && rgnode.rg_end > cur_vma->sbrk)
+      cur_vma->sbrk = rgnode.rg_end;
+
+    refresh_vma_sentinel(cur_vma);
     pthread_mutex_unlock(&mmvm_lock);
     return 0;
   }
@@ -143,7 +183,6 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
   inc_sz = PAGING_PAGE_ALIGNSZ(size);
 #endif
   libsyscall(caller, 17, SYSMEM_INC_OP, vmaid, inc_sz);
-
   if (cur_vma->sbrk == old_sbrk) {
     pthread_mutex_unlock(&mmvm_lock);
     return -1;
@@ -169,6 +208,7 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
     }
   }
 
+  refresh_vma_sentinel(cur_vma); 
   pthread_mutex_unlock(&mmvm_lock);
   return 0;
 }
@@ -494,6 +534,11 @@ addr_t __kmalloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t 
     krnl_mm->symrgtbl[rgid].vmaid    = rgnode.vmaid;
     *alloc_addr = rgnode.rg_start;
 
+    struct vm_area_struct *cur_vma = get_vma_by_num(caller->krnl->mm, vmaid);
+    if (cur_vma && rgnode.rg_end > cur_vma->sbrk)
+      cur_vma->sbrk = rgnode.rg_end;
+
+    refresh_vma_sentinel(cur_vma);
     pthread_mutex_unlock(&mmvm_lock);
     return 0;
   }
@@ -522,6 +567,7 @@ addr_t __kmalloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t 
   krnl_mm->symrgtbl[rgid].vmaid    = cur_vma->vm_id;
   *alloc_addr = mapped_start;
 
+  refresh_vma_sentinel(cur_vma)
   pthread_mutex_unlock(&mmvm_lock);
   return 0;
 }
