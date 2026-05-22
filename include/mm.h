@@ -212,6 +212,6 @@ int print_pgtbl(struct pcb_t *ip, addr_t start, addr_t end);
 
 int get_symrgid_by_addr(struct mm_struct *mm, addr_t addr);
 int get_vmaid_by_addr(struct mm_struct *mm, addr_t addr);
-static int user_dynamic_range(addr_t mapstart, int incpgnum);
-static int krnl_dynamic_range(addr_t mapstart, int incpgnum);
+int user_dynamic_range(addr_t mapstart, int incpgnum);
+int krnl_dynamic_range(addr_t mapstart, int incpgnum);
 #endif

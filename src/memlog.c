@@ -1,4 +1,4 @@
-#include "print_debug.h"
+#include "memlog.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -66,7 +66,7 @@ void print_storage_int(struct memphy_struct *m)
 
 void print_memphy(const char *name, struct memphy_struct *m)
 {
-    printf("%s | size:%d\n", name, m->maxsz);
+    printf("%s | size:%lu\n", name, (unsigned long)m->maxsz);
     print_storage_int(m);
     print_frame_list("FREE frames", m->free_fp_list);
     print_frame_list("USED frames", m->used_fp_list);
@@ -227,7 +227,7 @@ void print_kernel_info(struct krnl_t *os)
     print_memphy("ACTIVE SWAP", os->active_mswp);
 
     /* kernel page-table window */
-    printf("PAGE TABLE KENEL: ");
+    printf("PAGE TABLE KERNEL: ");
     const addr_t KBASE_PGN = KRNL_DYNAMIC_START / PAGING64_PAGESZ;
     for (int i = 0; i < 4; i++) {
         uint32_t pte = pte_get_entry_kernel_print(os, KBASE_PGN + i);

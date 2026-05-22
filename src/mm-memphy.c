@@ -315,12 +315,14 @@ int MEMPHY_put_contiguous_freefp(struct memphy_struct *mp, addr_t fpn) {
     return -1;
 
   int count = 1 << order;
+  /* Remove all frames in the block from used list and add to free list */
   for (int i = 0; i < count; i++) {
     fp_list_remove(&mp->used_fp_list, (addr_t)(fpn + i));
-    if (buddy_free(&mp->buddy, order, (int)(fpn + i)) != 0)
-      return -1;
     fp_list_push(&mp->free_fp_list, (addr_t)(fpn + i), 0);
   }
+  /* Free the whole block once at the base frame, not per-frame */
+  if (buddy_free(&mp->buddy, order, (int)fpn) != 0)
+    return -1;
   return 0;
 }
 

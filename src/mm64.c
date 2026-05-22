@@ -201,7 +201,7 @@ int vmap_pgd_memset(struct pcb_t *caller, addr_t addr, int pgnum) {
   return 0;
 }
 
-static int user_dynamic_range(addr_t mapstart, int incpgnum) {
+int user_dynamic_range(addr_t mapstart, int incpgnum) {
   if (incpgnum <= 0) return 0;
 
   addr_t mapsz = (addr_t)incpgnum * PAGING64_PAGESZ;
@@ -216,7 +216,7 @@ static int user_dynamic_range(addr_t mapstart, int incpgnum) {
   return 1;
 }
 
-static int krnl_dynamic_range(addr_t mapstart, int incpgnum) {
+int krnl_dynamic_range(addr_t mapstart, int incpgnum) {
   if (incpgnum <= 0) return 0;
   addr_t mapsz = (addr_t)incpgnum * PAGING64_PAGESZ;
   if (mapsz / PAGING64_PAGESZ != (addr_t)incpgnum)
@@ -389,14 +389,14 @@ addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
            (unsigned long)mapstart, incpgnum);
     printf("USER_SPACE_START=0x%016lx USER_SPACE_END=0x%016lx CANONICAL_HOLE_START=0x%016lx CANONICAL_HOLE_END=0x%016lx\n",
            (unsigned long)USER_SPACE_START, (unsigned long)USER_SPACE_END, (unsigned long)CANONICAL_HOLE_START, (unsigned long)CANONICAL_HOLE_END);
-    exit(1)
+    exit(1);
   }
 
   if (vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg) < 0) {
+    MEMPHY_put_freefp(caller->krnl->mram, fpit->fpn);
     struct framephy_struct *fpit = frm_lst;
     while (fpit != NULL) {
       struct framephy_struct *next = fpit->fp_next;
-      MEMPHY_put_freefp(caller->krnl->mram, fpit->fpn);
       free(fpit);
       fpit = next;
     }
@@ -422,11 +422,11 @@ addr_t krnl_vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
            (unsigned long)KRNL_DYNAMIC_START, (unsigned long)KRNL_DYNAMIC_END, (unsigned long)KRNL_STATIC_START);
     exit(1);
   }
-  if (krnl_vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg) < 0) {
+  if (krnl_vmap_page_range(caller, krnl_mapstart, incpgnum, frm_lst, ret_rg) < 0) {
+    MEMPHY_put_contiguous_freefp(caller->krnl->mram, frm_lst->fpn);
     struct framephy_struct *fpit = frm_lst;
     while (fpit != NULL) {
       struct framephy_struct *next = fpit->fp_next;
-      MEMPHY_put_contiguous_freefp(caller->krnl->mram, fpit->fpn);
       free(fpit);
       fpit = next;
     }

@@ -3,7 +3,7 @@
 #include "mm.h"
 #include "syscall.h"
 #include "libmem.h"
-#include "print_debug.h"
+#include "memlog.h"
 
 int calc(struct pcb_t *proc)
 {

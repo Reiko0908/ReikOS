@@ -180,8 +180,8 @@ static void * ld_routine(void * args) {
 	get_pd_from_address(KRNL_DYNAMIC_START, &k_pgd, &k_p4d, &k_pud, &k_pmd, &k_pt);
 	os.krnl_pgd[k_pgd] = (addr_t)os.krnl_p4d;
 	os.krnl_p4d[k_p4d] = (addr_t)os.krnl_pud;
-	os.krnl_pud[0]   = (addr_t)os.krnl_pmd;
-	os.krnl_pmd[0]   = (addr_t)os.krnl_pt;
+	os.krnl_pud[k_pud] = (addr_t)os.krnl_pmd;
+	os.krnl_pmd[k_pmd] = (addr_t)os.krnl_pt;
 #ifdef MM_PAGING
 	/* Init kernel mm_struct so kmalloc works */
 	os.mm = malloc(sizeof(struct mm_struct));
@@ -221,7 +221,7 @@ static void * ld_routine(void * args) {
 	free(ld_processes.path);
 	free(ld_processes.start_time);
 	done = 1;
-    sched_signal_loader_done(1000000);
+    sched_signal_loader_done(current_time());
 	detach_event(timer_id);
 	pthread_exit(NULL);
 }
