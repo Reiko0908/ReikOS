@@ -75,8 +75,8 @@ static void * cpu_routine(void * args) {
 			time_left = 0;
 		}else if (time_left == 0) {
 			/* The process has done its job in current time slot */
-			printf("\tCPU %d: Put process %2d to run queue (pc=%d/%d)\n",
-				id, proc->pid, proc->pc, proc->code->size);
+			printf("\tCPU %d: Put process %2d to run queue\n",
+				id, proc->pid);
 			put_proc(proc);
 			proc = get_proc();
 		}
