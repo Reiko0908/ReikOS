@@ -92,7 +92,40 @@ struct vm_rg_struct *get_symrg_byid(struct mm_struct *mm, int rgid) {
 
   return &mm->symrgtbl[rgid];
 }
+static void refresh_vma_sentinel(struct vm_area_struct *vma)
+{
+  if (!vma || vma->sbrk != vma->vm_end)
+    return;
 
+  /* Purge stale sentinels (zero-length nodes at the wrong address) */
+  struct vm_rg_struct **sp = &vma->vm_freerg_list;
+  while (*sp) {
+    struct vm_rg_struct *cur = *sp;
+    if (cur->rg_start == cur->rg_end && cur->rg_start != vma->vm_end) {
+      *sp = cur->rg_next;
+      free(cur);
+    } else {
+      sp = &cur->rg_next;
+    }
+  }
+
+  /* Add sentinel only if not already present */
+  struct vm_rg_struct *rg = vma->vm_freerg_list;
+  while (rg) {
+    if (rg->rg_start == vma->vm_end && rg->rg_end == vma->vm_end)
+      return;  /* already there */
+    rg = rg->rg_next;
+  }
+
+  struct vm_rg_struct *sentinel = malloc(sizeof(struct vm_rg_struct));
+  if (sentinel) {
+    sentinel->rg_start = vma->vm_end;
+    sentinel->rg_end   = vma->vm_end;
+    sentinel->vmaid    = vma->vm_id;
+    sentinel->rg_next  = vma->vm_freerg_list;
+    vma->vm_freerg_list = sentinel;
+  }
+}
 /*__alloc - allocate a region memory
  *@caller: caller
  *@vmaid: ID vm area to alloc memory region
@@ -124,6 +157,11 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
     caller->mm->symrgtbl[rgid].vmaid = rgnode.vmaid;
     *alloc_addr = rgnode.rg_start;
 
+    struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
+    if (cur_vma && rgnode.rg_end > cur_vma->sbrk)
+      cur_vma->sbrk = rgnode.rg_end;
+
+    refresh_vma_sentinel(cur_vma);            /* shared sentinel logic */
     pthread_mutex_unlock(&mmvm_lock);
     return 0;
   }
@@ -142,6 +180,7 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
 #else
   inc_sz = PAGING_PAGE_ALIGNSZ(size);
 #endif
+
   libsyscall(caller, 17, SYSMEM_INC_OP, vmaid, inc_sz);
 
   if (cur_vma->sbrk == old_sbrk) {
@@ -156,19 +195,20 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
   *alloc_addr = old_vm_end;
   cur_vma->sbrk = old_vm_end + size;
 
-  /* Fragmentation recovery */
-  if (old_vm_end + size < cur_vma->sbrk) {
-    struct vm_rg_struct *free_tail_rg = malloc(sizeof(struct vm_rg_struct));
-    if (free_tail_rg) {
-      free_tail_rg->rg_start = old_vm_end + size;
-      free_tail_rg->rg_end = cur_vma->vm_end;
-      free_tail_rg->mode_bit = 1;
-      free_tail_rg->vmaid = cur_vma->vm_id;
-      free_tail_rg->rg_next = NULL;
-      enlist_vm_freerg_list(caller->mm, free_tail_rg);
+  /* Fragmentation recovery — page-aligned leftover back to free list */
+  if (old_vm_end + size < cur_vma->vm_end) {
+    struct vm_rg_struct *free_tail = malloc(sizeof(struct vm_rg_struct));
+    if (free_tail) {
+      free_tail->rg_start = old_vm_end + size;
+      free_tail->rg_end   = cur_vma->vm_end;
+      free_tail->mode_bit = 1;
+      free_tail->vmaid    = cur_vma->vm_id;
+      free_tail->rg_next  = NULL;
+      enlist_vm_freerg_list(caller->mm, free_tail);
     }
   }
 
+  refresh_vma_sentinel(cur_vma);             /* shared sentinel logic */
   pthread_mutex_unlock(&mmvm_lock);
   return 0;
 }
