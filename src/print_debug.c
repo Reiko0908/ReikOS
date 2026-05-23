@@ -144,7 +144,7 @@ void system_dump(struct krnl_t *os) {
     /* Virtual Layer (Segmentation/VMAs) */
     struct mm_struct *mm = (os->current && os->current->mm) ? os->current->mm : os->mm;
     
-    printf("Segments (VMAs):");
+    printf("Memory Areas (VMAs):");
     for (struct vm_area_struct *vma = mm->mmap; vma; vma = vma->vm_next) {
         printf(" [ID:%lu 0x%lx-0x%lx, brk:0x%lx]", 
                (unsigned long)vma->vm_id, 
@@ -153,7 +153,16 @@ void system_dump(struct krnl_t *os) {
                (unsigned long)vma->sbrk);
     }
 
+    printf("\nSymbols (REGs): ");
+    for (int i = 0; i < PAGING_MAX_SYMTBL_SZ; i++) {
+        struct mm_struct *u_mm = os->current ? os->current->mm : NULL;
+        if (u_mm && (u_mm->symrgtbl[i].rg_start || u_mm->symrgtbl[i].rg_end))
+            printf("[U%d: 0x%lx-0x%lx] ", i, (unsigned long)u_mm->symrgtbl[i].rg_start, (unsigned long)u_mm->symrgtbl[i].rg_end);
+        if (os->mm && (os->mm->symrgtbl[i].rg_start || os->mm->symrgtbl[i].rg_end))
+            printf("[K%d: 0x%lx-0x%lx] ", i, (unsigned long)os->mm->symrgtbl[i].rg_start, (unsigned long)os->mm->symrgtbl[i].rg_end);
+    }
+
     printf("\n\n");
-}
+    }
 
 void pg_dump(struct pcb_t *p, addr_t s, addr_t e) { (void)p; (void)s; (void)e; }
