@@ -89,10 +89,14 @@ static uint32_t walk_pt(struct mm_struct *mm, addr_t pgn) {
     addr_t pgd_i, p4d_i, pud_i, pmd_i, pt_i;
     get_pd_from_pagenum(pgn, &pgd_i, &p4d_i, &pud_i, &pmd_i, &pt_i);
     addr_t *v = mm->pgd;
-    if (!v[pgd_i]) return 0; v = (addr_t *)v[pgd_i];
-    if (!v[p4d_i]) return 0; v = (addr_t *)v[p4d_i];
-    if (!v[pud_i]) return 0; v = (addr_t *)v[pud_i];
-    if (!v[pmd_i]) return 0; v = (addr_t *)v[pmd_i];
+    if (!v[pgd_i]) return 0;
+    v = (addr_t *)v[pgd_i];
+    if (!v[p4d_i]) return 0;
+    v = (addr_t *)v[p4d_i];
+    if (!v[pud_i]) return 0;
+    v = (addr_t *)v[pud_i];
+    if (!v[pmd_i]) return 0;
+    v = (addr_t *)v[pmd_i];
     return (uint32_t)v[pt_i];
 }
 
@@ -101,10 +105,14 @@ static uint32_t walk_kernel_pt(struct krnl_t *os, addr_t pgn) {
     addr_t pgd_i, p4d_i, pud_i, pmd_i, pt_i;
     get_pd_from_pagenum(pgn, &pgd_i, &p4d_i, &pud_i, &pmd_i, &pt_i);
     addr_t *v = os->krnl_pgd;
-    if (!v[pgd_i]) return 0; v = (addr_t *)v[pgd_i];
-    if (!v[p4d_i]) return 0; v = (addr_t *)v[p4d_i];
-    if (!v[pud_i]) return 0; v = (addr_t *)v[pud_i];
-    if (!v[pmd_i]) return 0; v = (addr_t *)v[pmd_i];
+    if (!v[pgd_i]) return 0;
+    v = (addr_t *)v[pgd_i];
+    if (!v[p4d_i]) return 0;
+    v = (addr_t *)v[p4d_i];
+    if (!v[pud_i]) return 0;
+    v = (addr_t *)v[pud_i];
+    if (!v[pmd_i]) return 0;
+    v = (addr_t *)v[pmd_i];
     return (uint32_t)v[pt_i];
 }
 
