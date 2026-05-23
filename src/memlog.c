@@ -100,31 +100,23 @@ void print_memphy(const char *name, struct memphy_struct *m) {
     printf("======================\n");
 }
 
-uint32_t pte_get_entry_kernel_print(struct krnl_t *os, addr_t pgn) {
-    addr_t pgd_i, p4d_i, pud_i, pmd_i, pt_i;
-    get_pd_from_pagenum(pgn, &pgd_i, &p4d_i, &pud_i, &pmd_i, &pt_i);
-    if (!os->krnl_pgd || os->krnl_pgd[pgd_i] == 0) return 0;
-    addr_t *p4d = (addr_t *)os->krnl_pgd[pgd_i];
-    if (!p4d || p4d[p4d_i] == 0) return 0;
-    addr_t *pud = (addr_t *)p4d[p4d_i];
-    if (!pud || pud[pud_i] == 0) return 0;
-    addr_t *pmd = (addr_t *)pud[pud_i];
-    if (!pmd || pmd[pmd_i] == 0) return 0;
-    addr_t *pt  = (addr_t *)pmd[pmd_i];
-    if (!pt) return 0;
-    return (uint32_t)pt[pt_i];
-}
-
-static uint32_t walk_pt(struct mm_struct *mm, addr_t pgn) {
-    addr_t pgd_i, p4d_i, pud_i, pmd_i, pt_i;
-    get_pd_from_pagenum(pgn, &pgd_i, &p4d_i, &pud_i, &pmd_i, &pt_i);
-    if (!mm->pgd || mm->pgd[pgd_i] == 0) return 0;
-    addr_t *v = mm->pgd;
-    if (!v[pgd_i]) return 0; v = (addr_t *)v[pgd_i];
-    if (!v[p4d_i]) return 0; v = (addr_t *)v[p4d_i];
-    if (!v[pud_i]) return 0; v = (addr_t *)v[pud_i];
-    if (!v[pmd_i]) return 0; v = (addr_t *)v[pmd_i];
-    return (uint32_t)v[pt_i];
+static void print_symtbl_merged(struct mm_struct *u_mm, struct mm_struct *k_mm) {
+    printf("\nSYMBOL TABLE: ");
+    int empty = 1;
+    for (int i = 0; i < PAGING_MAX_SYMTBL_SZ; i++) {
+        if (u_mm && (u_mm->symrgtbl[i].rg_start || u_mm->symrgtbl[i].rg_end)) {
+            struct vm_rg_struct *rg = &u_mm->symrgtbl[i];
+            printf("[U%d:0x%lx-0x%lx (%s)] ", i, (unsigned long)rg->rg_start, (unsigned long)rg->rg_end, get_vma_label(rg));
+            empty = 0;
+        }
+        if (k_mm && (k_mm->symrgtbl[i].rg_start || k_mm->symrgtbl[i].rg_end)) {
+            struct vm_rg_struct *rg = &k_mm->symrgtbl[i];
+            printf("[K%d:0x%lx-0x%lx (%s)] ", i, (unsigned long)rg->rg_start, (unsigned long)rg->rg_end, get_vma_label(rg));
+            empty = 0;
+        }
+    }
+    if (empty) printf("(empty)");
+    printf("\n");
 }
 
 void print_mm_struct(struct mm_struct *mm) {
@@ -133,7 +125,9 @@ void print_mm_struct(struct mm_struct *mm) {
     for (struct vm_area_struct *v = mm->mmap; v; v = v->vm_next)
         printf("[%lx-%lx sbrk:%lx] ", (unsigned long)v->vm_start, (unsigned long)v->vm_end, (unsigned long)v->sbrk);
     
-    printf("\nFIFO PAGE LIST: ");
+    print_symtbl_merged(mm, NULL);
+
+    printf("FIFO PAGE LIST: ");
     for (struct pgn_t *p = mm->fifo_pgn; p; p = p->pg_next) printf("[%lu] ", (unsigned long)p->pgn);
     printf("\n================================ END ================================\n\n");
 }
@@ -145,9 +139,20 @@ void print_kernel_info(struct krnl_t *os) {
     print_memphy("RAM", os->mram);
     print_memphy("ACTIVE SWAP", os->active_mswp);
 
-    struct mm_struct *user_mm = (os->current && os->current->mm) ? os->current->mm : NULL;
-    if (user_mm) print_mm_struct(user_mm);
-    else         print_mm_struct(os->mm);
+    struct mm_struct *u_mm = (os->current && os->current->mm) ? os->current->mm : NULL;
+    struct mm_struct *k_mm = os->mm;
+
+    printf("MM STRUCT\n");
+    struct mm_struct *active_vma_mm = u_mm ? u_mm : k_mm;
+    printf("VMA | id=%lu: ", (unsigned long)active_vma_mm->mmap ? active_vma_mm->mmap->vm_id : 0);
+    for (struct vm_area_struct *v = active_vma_mm->mmap; v; v = v->vm_next)
+        printf("[%lx-%lx sbrk:%lx] ", (unsigned long)v->vm_start, (unsigned long)v->vm_end, (unsigned long)v->sbrk);
+
+    print_symtbl_merged(u_mm, k_mm);
+
+    printf("FIFO PAGE LIST: ");
+    for (struct pgn_t *p = active_vma_mm->fifo_pgn; p; p = p->pg_next) printf("[%lu] ", (unsigned long)p->pgn);
+    printf("\n================================ END ================================\n\n");
 }
 
 static pthread_mutex_t sync_log_lock = PTHREAD_MUTEX_INITIALIZER;
