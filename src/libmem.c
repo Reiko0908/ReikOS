@@ -567,7 +567,7 @@ addr_t __kmalloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t 
   krnl_mm->symrgtbl[rgid].vmaid    = cur_vma->vm_id;
   *alloc_addr = mapped_start;
 
-  refresh_vma_sentinel(cur_vma)
+  refresh_vma_sentinel(cur_vma);
   pthread_mutex_unlock(&mmvm_lock);
   return 0;
 }

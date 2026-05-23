@@ -393,8 +393,8 @@ addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
   }
 
   if (vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg) < 0) {
-    MEMPHY_put_freefp(caller->krnl->mram, fpit->fpn);
     struct framephy_struct *fpit = frm_lst;
+    MEMPHY_put_freefp(caller->krnl->mram, fpit->fpn);
     while (fpit != NULL) {
       struct framephy_struct *next = fpit->fp_next;
       free(fpit);
@@ -422,7 +422,7 @@ addr_t krnl_vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
            (unsigned long)KRNL_DYNAMIC_START, (unsigned long)KRNL_DYNAMIC_END, (unsigned long)KRNL_STATIC_START);
     exit(1);
   }
-  if (krnl_vmap_page_range(caller, krnl_mapstart, incpgnum, frm_lst, ret_rg) < 0) {
+  if (krnl_vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg) < 0) {
     MEMPHY_put_contiguous_freefp(caller->krnl->mram, frm_lst->fpn);
     struct framephy_struct *fpit = frm_lst;
     while (fpit != NULL) {
