@@ -356,9 +356,5 @@ int main(int argc, char * argv[]) {
 
 	/* Stop timer */
 	stop_timer();
-
-    /* Display the process scheduling history */
-    gantt_dump();
-
 	return 0;
 }

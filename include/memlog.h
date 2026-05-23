@@ -10,7 +10,6 @@
 
 /* Verbose OS Snapshot API */
 void print_kernel_info(struct krnl_t *os);
-void gantt_dump();
 
 /* Compatibility / Specialized stubs */
 void pg_dump(struct pcb_t *p, addr_t s, addr_t e);

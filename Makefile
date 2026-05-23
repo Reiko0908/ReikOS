@@ -1,4 +1,3 @@
-
 INC = -Iinclude
 LIB = -lpthread
 
@@ -24,8 +23,13 @@ OS_OBJ += $(SYSCALL_OBJ)
 SCHED_OBJ = $(addprefix $(OBJ)/, cpu.o loader.o)
 HEADER = $(wildcard $(INCLUDE)/*.h)
 
-all: os
+all: gantt os
 #mem sched os
+
+# Gantt chart visualiser (standalone – reads a log file, no OS headers needed)
+gantt: $(SRC)/gantt.c
+	$(CC) $(LFLAGS) $(SRC)/gantt.c -o gantt
+
 boundary_test: $(OBJ) $(OBJ)/mm64_boundary_test.o
 	$(CC) $(LFLAGS) $(OBJ)/mm64.o $(OBJ)/mm64_boundary_test.o -o boundary_test $(LIB)
 
@@ -57,5 +61,5 @@ $(OBJ):
 
 clean:
 	rm -f $(SRC)/*.lst
-	rm -f $(OBJ)/*.o os sched mem pdg
+	rm -f $(OBJ)/*.o os sched mem pdg gantt
 	rm -rf $(OBJ)
