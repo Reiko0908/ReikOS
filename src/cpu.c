@@ -146,7 +146,7 @@ int run(struct pcb_t *proc)
 		   (unsigned long)ins.arg_1,
 		   (unsigned long)ins.arg_2,
 		   (unsigned long)ins.arg_3);
-	print_kernel_info(proc->krnl);
+	system_dump(proc->krnl);
 #endif
 
 	return stat;
