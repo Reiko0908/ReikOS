@@ -133,15 +133,11 @@ int __write_kernel_mem(struct pcb_t *caller, int vmaid, int rgid, addr_t offset,
 /* Page directory prototypes */
 int get_pd_from_address(addr_t addr, addr_t* pgd, addr_t* p4d, addr_t* pud, addr_t* pmd, addr_t* pt);
 int get_pd_from_pagenum(addr_t pgn, addr_t* pgd, addr_t* p4d, addr_t* pud, addr_t* pmd, addr_t* pt);
-static addr_t *get_pte(struct mm_struct *mm, addr_t pgn);
-static int __pte_set_fpn(struct mm_struct *mm, addr_t pgn, addr_t fpn);
 int pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn);
 int krnl_pte_set_fpn(struct pcb_t *caller, addr_t pgn, addr_t fpn);
 int pte_set_swap(struct pcb_t *caller, addr_t pgn, int swptyp, addr_t swpoff);
-static uint32_t __pte_get_entry(struct mm_struct *mm, addr_t pgn);
 uint32_t pte_get_entry(struct pcb_t *caller, addr_t pgn);
 uint32_t krnl_pte_get_entry(struct pcb_t *caller, addr_t pgn);
-static int __pte_set_entry(struct mm_struct *mm, addr_t pgn, uint32_t pte_val);
 int pte_set_entry(struct pcb_t *caller, addr_t pgn, uint32_t pte_val);
 int krnl_pte_set_entry(struct pcb_t *caller, addr_t pgn, uint32_t pte_val);
 int init_pte(addr_t *pte,
@@ -155,7 +151,6 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
 int __free(struct pcb_t *caller, int vmaid, int rgid);
 int __read(struct pcb_t *caller, int vmaid, int rgid, addr_t offset, BYTE *data);
 int __write(struct pcb_t *caller, int vmaid, int rgid, addr_t offset, BYTE value);
-static int __init_mm(struct mm_struct *mm, addr_t *pgd_root, addr_t vm_base_addr);
 int init_mm(struct mm_struct *mm, struct pcb_t *caller);
 int krnl_init_mm(struct mm_struct *mm, struct krnl_t *krnl);
 

@@ -385,18 +385,18 @@ addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
 
   /* Validate that the user mapping stays within user space and does not cross into the canonical hole */
   if (!user_dynamic_range(mapstart, incpgnum)) {
-    printf("[ERROR] vm_map_ram: user mapping would cross into canonical hole or out of user space. mapstart=0x%016lx incpgnum=%d\n",
+    printf("[ERROR] vm_map_ram: user dynamic region overflow.""mapstart=0x%016lx incpgnum=%d\n",
            (unsigned long)mapstart, incpgnum);
-    printf("USER_SPACE_START=0x%016lx USER_SPACE_END=0x%016lx CANONICAL_HOLE_START=0x%016lx CANONICAL_HOLE_END=0x%016lx\n",
-           (unsigned long)USER_SPACE_START, (unsigned long)USER_SPACE_END, (unsigned long)CANONICAL_HOLE_START, (unsigned long)CANONICAL_HOLE_END);
+    printf("USER_DYNAMIC_START=0x%016lx USER_DYNAMIC_END=0x%016lx""USER_STATIC_START=0x%016lx\n",
+           (unsigned long)USER_DYNAMIC_START, (unsigned long)USER_DYNAMIC_END, (unsigned long)KRNL_STATIC_START);
     exit(1);
   }
 
   if (vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg) < 0) {
     struct framephy_struct *fpit = frm_lst;
-    MEMPHY_put_freefp(caller->krnl->mram, fpit->fpn);
     while (fpit != NULL) {
       struct framephy_struct *next = fpit->fp_next;
+      MEMPHY_put_freefp(caller->krnl->mram, fpit->fpn);
       free(fpit);
       fpit = next;
     }

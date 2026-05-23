@@ -196,7 +196,7 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
   cur_vma->sbrk = old_vm_end + size;
 
   /* Fragmentation recovery */
-  if (old_vm_end + size < cur_vma->sbrk) {
+  if (old_vm_end + size < cur_vma->vm_end) {
     struct vm_rg_struct *free_tail_rg = malloc(sizeof(struct vm_rg_struct));
     if (free_tail_rg) {
       free_tail_rg->rg_start = old_vm_end + size;
