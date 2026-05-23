@@ -1,6 +1,67 @@
 #include "memlog.h"
+#include "mm64.h"
+#include "timer.h"
+#include <pthread.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* ── Gantt Chart Tracking (Integrated) ──────────────────────────────── */
+#define MAX_TIMELINE 1000
+#define MAX_CPUS_TRACKED 16
+static int sched_history[MAX_CPUS_TRACKED][MAX_TIMELINE];
+static int gantt_init_done = 0;
+static int max_seen_cpu_idx = 0;
+static int max_seen_time_idx = 0;
+static pthread_mutex_t gantt_tracking_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static int get_cpu_idx_from_thread() {
+    static pthread_t thread_registry[MAX_CPUS_TRACKED];
+    static int registry_count = 0;
+    pthread_t self = pthread_self();
+    for (int i = 0; i < registry_count; i++) if (pthread_equal(thread_registry[i], self)) return i;
+    if (registry_count < MAX_CPUS_TRACKED) { thread_registry[registry_count] = self; return registry_count++; }
+    return 0;
+}
+
+static void log_scheduling(int pid) {
+    pthread_mutex_lock(&gantt_tracking_lock);
+    if (!gantt_init_done) {
+        for (int c = 0; c < MAX_CPUS_TRACKED; c++)
+            for (int t = 0; t < MAX_TIMELINE; t++) sched_history[c][t] = -1;
+        gantt_init_done = 1;
+    }
+    int t = (int)current_time();
+    int c = get_cpu_idx_from_thread();
+    if (c < MAX_CPUS_TRACKED && t < MAX_TIMELINE) {
+        sched_history[c][t] = pid;
+        if (c > max_seen_cpu_idx)  max_seen_cpu_idx = c;
+        if (t > max_seen_time_idx) max_seen_time_idx = t;
+    }
+    pthread_mutex_unlock(&gantt_tracking_lock);
+}
+
+void gantt_dump() {
+    if (!gantt_init_done) return;
+    printf("\n=== PROCESS SCHEDULING TIMELINE (GANTT CHART) ===\n\n");
+    for (int block = 0; block <= max_seen_time_idx; block += 20) {
+        int end = (block + 19 > max_seen_time_idx) ? max_seen_time_idx : block + 19;
+        printf("Time  : ");
+        for (int i = block; i <= end; i++) printf("%02d ", i);
+        printf("\n");
+        for (int c = 0; c <= max_seen_cpu_idx; c++) {
+            printf("CPU %d : ", c);
+            for (int i = block; i <= end; i++) {
+                int p = sched_history[c][i];
+                if (p == -1) printf("-- ");
+                else         printf("P%d ", p);
+            }
+            printf("\n");
+        }
+        printf("\n");
+    }
+    fflush(stdout);
+}
 
 /* ── forward declarations ──────────────────────────────────────────── */
 static uint32_t pte_get_entry_print(struct mm_struct *mm, addr_t pgn);
@@ -127,7 +188,6 @@ static void print_vma_list(struct mm_struct *mm)
 {
     if (!mm) { printf("  (mm=NULL)\n"); return; }
 
-    // libmem_mmvm_lock();
     struct vm_area_struct *vma = mm->mmap;
     if (!vma) printf("  (empty)\n");
     for (; vma; vma = vma->vm_next) {
@@ -144,7 +204,6 @@ static void print_vma_list(struct mm_struct *mm)
         }
         printf("\n");
     }
-    // libmem_mmvm_unlock();
 }
 
 /* ── Print FIFO page list for a given mm ─────────────────────────── */
@@ -222,6 +281,9 @@ void print_mm_struct(struct mm_struct *mm)
  * ══════════════════════════════════════════════════════════════════════ */
 void print_kernel_info(struct krnl_t *os)
 {
+    if (!os) return;
+    if (os->current) log_scheduling(os->current->pid);
+
     /* hardware state */
     print_memphy("RAM", os->mram);
     print_memphy("ACTIVE SWAP", os->active_mswp);
@@ -250,3 +312,5 @@ void print_kernel_info(struct krnl_t *os)
     print_cache_pools(krnl_mm);
     printf("\n================================ END ================================\n\n");
 }
+
+void pg_dump(struct pcb_t *p, addr_t s, addr_t e) { (void)p; (void)s; (void)e; }

@@ -112,6 +112,7 @@ static void * cpu_routine(void * args) {
 			/* The porcess has finish it job */
 			sync_printf("\tCPU %d: Processed %2d has finished\n",
 				id ,proc->pid);
+            finish_proc(proc);
 			free(proc);
 			proc = get_proc();
 			time_left = 0;

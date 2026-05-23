@@ -14,4 +14,11 @@ void print_memphy(const char *name, struct memphy_struct *m);
 void print_frame_list(const char *name, struct framephy_struct *head);
 void print_storage_int(struct memphy_struct *m);
 void print_mm_struct(struct mm_struct *mm);
+
+/* Gantt Chart */
+void gantt_dump();
+
+/* Thread-safe scheduler logging */
+void sync_log_printf(const char *fmt, ...);
+
 #endif
