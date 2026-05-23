@@ -1,178 +1,262 @@
 #include "print_debug.h"
-#include "mm64.h"
-#include "timer.h"
 #include <pthread.h>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <string.h>
 
-/* ─────────────────────────────────────────────────────────────────────────
- *  Scheduling Visualizer (Gantt Chart) - Private Implementation
- * ───────────────────────────────────────────────────────────────────────── */
+/* ── forward declarations ──────────────────────────────────────────── */
+static uint32_t pte_get_entry_print(struct mm_struct *mm, addr_t pgn);
+static void print_symtbl_merged(struct mm_struct *user_mm, struct mm_struct *krnl_mm);
 
-#define MAX_TIMELINE_STEPS 1000
-#define MAX_SUPPORTED_CPUS 16
+/* ══════════════════════════════════════════════════════════════════════
+ *  Low-level helpers
+ * ══════════════════════════════════════════════════════════════════════ */
 
-/* Global state for tracking process execution over time */
-static int schedule_matrix[MAX_SUPPORTED_CPUS][MAX_TIMELINE_STEPS];
-static int scheduler_initialized = 0;
-static int max_cpu_seen = 0;
-static int max_time_seen = 0;
-static pthread_mutex_t scheduler_data_lock = PTHREAD_MUTEX_INITIALIZER;
-
-/**
- * identify_cpu_index - Maps current pthread to a virtual CPU ID (0..15)
- */
-static int identify_cpu_index() {
-    static pthread_t thread_map[MAX_SUPPORTED_CPUS];
-    static int map_size = 0;
-    pthread_t current_thread = pthread_self();
-
-    for (int i = 0; i < map_size; i++) {
-        if (pthread_equal(thread_map[i], current_thread)) return i;
-    }
-
-    if (map_size < MAX_SUPPORTED_CPUS) {
-        thread_map[map_size] = current_thread;
-        return map_size++;
-    }
-    return 0;
+void print_frame_list(const char *name, struct framephy_struct *head)
+{
+    printf("%s: ", name);
+    if (!head) { printf("(empty)\n"); return; }
+    for (; head; head = head->fp_next)
+        printf("[%lu] ", (unsigned long)head->fpn);
+    printf("\n");
 }
 
-/**
- * track_process_execution - Records the active process for the current CPU/Time
- */
-static void track_process_execution(int pid) {
-    pthread_mutex_lock(&scheduler_data_lock);
+void print_storage_int(struct memphy_struct *m)
+{
+    if (!m || !m->storage) { printf("storage is NULL\n"); return; }
 
-    /* Initialize the schedule matrix with IDLE marker (-1) on first call */
-    if (!scheduler_initialized) {
-        for (int c = 0; c < MAX_SUPPORTED_CPUS; c++) {
-            for (int t = 0; t < MAX_TIMELINE_STEPS; t++) {
-                schedule_matrix[c][t] = -1; 
-            }
-        }
-        scheduler_initialized = 1;
-    }
+    printf("STORAGE\n");
+    int ints_per_page = PAGING64_PAGESZ / sizeof(int);
+    int total_pages   = m->maxsz / PAGING64_PAGESZ;
 
-    int t_now = (int)current_time();
-    int cpu_id = identify_cpu_index();
-
-    if (cpu_id < MAX_SUPPORTED_CPUS && t_now < MAX_TIMELINE_STEPS) {
-        schedule_matrix[cpu_id][t_now] = pid;
-        
-        if (cpu_id > max_cpu_seen)   max_cpu_seen = cpu_id;
-        if (t_now > max_time_seen) max_time_seen = t_now;
-    }
-
-    pthread_mutex_unlock(&scheduler_data_lock);
-}
-
-/**
- * display_gantt_chart - Output function executed at simulation exit
- */
-void __attribute__((destructor)) display_gantt_chart() {
-    if (!scheduler_initialized) return;
-
-    printf("\n=== PROCESS SCHEDULING TIMELINE (GANTT CHART) ===\n\n");
-
-    const int steps_per_block = 20;
-    for (int block_start = 0; block_start <= max_time_seen; block_start += steps_per_block) {
-        int block_end = (block_start + steps_per_block - 1 > max_time_seen) 
-                        ? max_time_seen 
-                        : block_start + steps_per_block - 1;
-
-        /* Print Timeline header */
-        printf("Time  : ");
-        for (int t = block_start; t <= block_end; t++) printf("%02d ", t);
-        printf("\n");
-
-        /* Print each CPU's workload (No Color) */
-        for (int c = 0; c <= max_cpu_seen; c++) {
-            printf("CPU %d : ", c);
-            for (int t = block_start; t <= block_end; t++) {
-                int p = schedule_matrix[c][t];
-                if (p == -1) printf("-- ");
-                else         printf("P%d ", p);
-            }
-            printf("\n");
+    for (int pg = 0; pg < total_pages; pg++) {
+        printf("[PAGE %d] : ", pg);
+        for (int i = 0; i < 16; i++) {
+            int idx = pg * ints_per_page + i;
+            printf("%08x ", *(int *)(m->storage + idx * sizeof(int)));
         }
         printf("\n");
     }
 }
 
-/* ─────────────────────────────────────────────────────────────────────────
- *  Memory Inspection Helpers
- * ───────────────────────────────────────────────────────────────────────── */
-
-/**
- * get_vma_region_label - Returns a descriptive name for a memory region
- */
-static const char *get_vma_region_label(struct vm_rg_struct *rg) {
-    if (IS_KRNL_SPACE(rg->rg_start)) {
-        return (rg->vmaid == 0) ? "KERNEL DYNAMIC" : "KERNEL STATIC";
-    }
-    return (rg->vmaid == 0) ? "USER DYNAMIC" : "USER STATIC";
+void print_memphy(const char *name, struct memphy_struct *m)
+{
+    printf("%s | size:%d\n", name, m->maxsz);
+    print_storage_int(m);
+    print_frame_list("FREE frames", m->free_fp_list);
+    print_frame_list("USED frames", m->used_fp_list);
+    printf("======================\n");
 }
 
-/**
- * show_physical_layer - Prints first 16 bytes per page of a memory device
- */
-static void show_physical_layer(const char *name, struct memphy_struct *mp) {
-    if (!mp || !mp->storage) return;
+/* ── 5-level page-table walk for the kernel's own pgd ─────────────── */
+uint32_t pte_get_entry_kernel_print(struct krnl_t *os, addr_t pgn)
+{
+    addr_t pgd_i, p4d_i, pud_i, pmd_i, pt_i;
+    get_pd_from_pagenum(pgn, &pgd_i, &p4d_i, &pud_i, &pmd_i, &pt_i);
 
-    printf("%s (Total size: %d bytes):\n", name, (int)mp->maxsz);
-    int pages = mp->maxsz / PAGING64_PAGESZ;
-
-    for (int p_idx = 0; p_idx < pages; p_idx++) {
-        printf("  [Page %2d] : ", p_idx);
-        for (int offset = 0; offset < 16; offset++) {
-            unsigned char byte = ((unsigned char *)mp->storage)[p_idx * PAGING64_PAGESZ + offset];
-            printf("%02x ", byte);
-        }
-        printf("\n");
-    }
+    if (!os->krnl_pgd || os->krnl_pgd[pgd_i] == 0) return 0;
+    addr_t *p4d = (addr_t *)os->krnl_pgd[pgd_i];
+    if (!p4d || p4d[p4d_i] == 0) return 0;
+    addr_t *pud = (addr_t *)p4d[p4d_i];
+    if (!pud || pud[pud_i] == 0) return 0;
+    addr_t *pmd = (addr_t *)pud[pud_i];
+    if (!pmd || pmd[pmd_i] == 0) return 0;
+    addr_t *pt  = (addr_t *)pmd[pmd_i];
+    if (!pt) return 0;
+    return (uint32_t)pt[pt_i];
 }
 
-/**
- * system_dump - Standard interface for per-step system state dump
- */
-void system_dump(struct krnl_t *os) {
-    if (!os) return;
+/* ── 5-level page-table walk for a user mm ────────────────────────── */
+static uint32_t pte_get_entry_print(struct mm_struct *mm, addr_t pgn)
+{
+    addr_t pgd_i = 0, p4d_i = 0, pud_i = 0, pmd_i = 0, pt_i = 0;
+    get_pd_from_pagenum(pgn, &pgd_i, &p4d_i, &pud_i, &pmd_i, &pt_i);
 
-    /* Feed current scheduling data into the visualizer */
-    if (os->current) {
-        track_process_execution(os->current->pid);
+    if (!mm->pgd || mm->pgd[pgd_i] == 0) return 0;
+    addr_t *p4d = (addr_t *)mm->pgd[pgd_i];
+    if (!p4d || p4d[p4d_i] == 0) return 0;
+    addr_t *pud = (addr_t *)p4d[p4d_i];
+    if (!pud || pud[pud_i] == 0) return 0;
+    addr_t *pmd = (addr_t *)pud[pud_i];
+    if (!pmd || pmd[pmd_i] == 0) return 0;
+    addr_t *pt  = (addr_t *)pmd[pmd_i];
+    if (!pt) return 0;
+    return (uint32_t)pt[pt_i];
+}
+
+/* ── Print PAGE TABLE entries for a given mm (6 entries) ─────────── */
+static void print_page_table(struct mm_struct *mm)
+{
+    printf("PAGE TABLE: ");
+    for (int i = 0; i < 6; i++) {
+        uint32_t pte = pte_get_entry_print(mm, i);
+        if      (PAGING_PAGE_PRESENT(pte))      printf("[page=%d -> frame=%u] ", i, PAGING_PTE_FPN(pte));
+        else if (pte & PAGING_PTE_SWAPPED_MASK) printf("[page=%d -> swap=%u] ",  i, PAGING_PTE_SWP(pte));
+        else                                    printf("[page=%d -> none] ",      i);
     }
+    printf("\n");
+}
 
-    /* Hardware Layer */
-    show_physical_layer("Physical RAM", os->mram);
-    show_physical_layer("Swap Storage", os->active_mswp);
-
-    /* Virtual Layer (Segmentation/VMAs) */
-    struct mm_struct *active_mm = (os->current && os->current->mm) ? os->current->mm : os->mm;
-    
-    printf("Segments (VMAs):");
-    for (struct vm_area_struct *vma = active_mm->mmap; vma; vma = vma->vm_next) {
-        printf(" [ID:%lu 0x%lx-0x%lx, brk:0x%lx]", 
-               (unsigned long)vma->vm_id, 
-               (unsigned long)vma->vm_start, 
-               (unsigned long)vma->vm_end, 
+/* ── Print VMA list for a given mm ───────────────────────────────── */
+static void print_vma_list(struct mm_struct *mm)
+{
+    struct vm_area_struct *vma = mm->mmap;
+    if (!vma) printf("  (empty)\n");
+    for (; vma; vma = vma->vm_next) {
+        printf("VMA | id=%lu | start=%lu | end=%lu | sbrk=%lu | free regions: ",
+               vma->vm_id,
+               (unsigned long)vma->vm_start,
+               (unsigned long)vma->vm_end,
                (unsigned long)vma->sbrk);
-    }
-
-    /* Symbol Table with Region Labels */
-    printf("\nSymbols (REGs): ");
-    for (int i = 0; i < PAGING_MAX_SYMTBL_SZ; i++) {
-        struct mm_struct *u_mm = os->current ? os->current->mm : NULL;
-        if (u_mm && (u_mm->symrgtbl[i].rg_start || u_mm->symrgtbl[i].rg_end)) {
-            struct vm_rg_struct *rg = &u_mm->symrgtbl[i];
-            printf("[U%d: 0x%lx-0x%lx (%s)] ", i, (unsigned long)rg->rg_start, (unsigned long)rg->rg_end, get_vma_region_label(rg));
+        struct vm_rg_struct *rg = vma->vm_freerg_list;
+        if (!rg) printf("(empty)");
+        for (; rg; rg = rg->rg_next) {
+            printf("[%lu-%lu]", (unsigned long)rg->rg_start, (unsigned long)rg->rg_end);
+            if (rg->rg_next) printf(" -> ");
         }
-        if (os->mm && (os->mm->symrgtbl[i].rg_start || os->mm->symrgtbl[i].rg_end)) {
-            struct vm_rg_struct *rg = &os->mm->symrgtbl[i];
-            printf("[K%d: 0x%lx-0x%lx (%s)] ", i, (unsigned long)rg->rg_start, (unsigned long)rg->rg_end, get_vma_region_label(rg));
-        }
+        printf("\n");
     }
-
-    printf("\n\n");
 }
 
-void pg_dump(struct pcb_t *p, addr_t s, addr_t e) { (void)p; (void)s; (void)e; }
+/* ── Print FIFO page list for a given mm ─────────────────────────── */
+static void print_fifo_list(struct mm_struct *mm)
+{
+    printf("FIFO PAGE LIST: ");
+    struct pgn_t *p = mm->fifo_pgn;
+    if (!p) printf("(empty)");
+    for (; p; p = p->pg_next) {
+        printf("[%lu]", (unsigned long)p->pgn);
+        if (p->pg_next) printf(" -> ");
+    }
+    printf("\n");
+}
+
+/* ── Print cache pools from a given mm ───────────────────────────── */
+static void print_cache_pools(struct mm_struct *mm)
+{
+    printf("KMEM CACHE POOLS:\n");
+    if (!mm || !mm->kcpooltbl) return;
+    for (int i = 0; i < 4; i++) {
+        struct kcache_pool_struct *pool = &mm->kcpooltbl[i];
+        if (pool->size != 0 || pool->align != 0 || pool->storage != 0)
+            printf("  pool[%d] size=%d align=%d storage=0x%lx\n",
+                   i, pool->size, pool->align, (unsigned long)pool->storage);
+    }
+}
+
+/* ── Merge user + kernel symrgtbls by index order ────────────────── */
+static void print_symtbl_merged(struct mm_struct *user_mm, struct mm_struct *krnl_mm)
+{
+    printf("SYMBOL TABLE: ");
+    int empty = 1;
+    for (int i = 0; i < PAGING_MAX_SYMTBL_SZ; i++) {
+        if (user_mm && (user_mm->symrgtbl[i].rg_start != 0 || user_mm->symrgtbl[i].rg_end != 0)) {
+            printf("[rg%d:0x%lx-0x%lx mode=%s] ", i,
+                   (unsigned long)user_mm->symrgtbl[i].rg_start,
+                   (unsigned long)user_mm->symrgtbl[i].rg_end,
+                   user_mm->symrgtbl[i].mode_bit ? "USER" : "KERNEL");
+            empty = 0;
+        }
+        if (krnl_mm && (krnl_mm->symrgtbl[i].rg_start != 0 || krnl_mm->symrgtbl[i].rg_end != 0)) {
+            printf("[rg%d:0x%lx-0x%lx mode=%s] ", i,
+                   (unsigned long)krnl_mm->symrgtbl[i].rg_start,
+                   (unsigned long)krnl_mm->symrgtbl[i].rg_end,
+                   krnl_mm->symrgtbl[i].mode_bit ? "USER" : "KERNEL");
+            empty = 0;
+        }
+    }
+    if (empty) printf("(empty)");
+    printf("\n");
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+ *  print_mm_struct  –  standalone MM snapshot (single symrgtbl)
+ * ══════════════════════════════════════════════════════════════════════ */
+void print_mm_struct(struct mm_struct *mm)
+{
+    printf("MM STRUCT\n");
+    if (!mm) { printf("mm = NULL\n"); return; }
+
+    print_page_table(mm);
+    print_vma_list(mm);
+    print_symtbl_merged(mm, NULL);   /* single-mm: pass NULL for krnl */
+    print_fifo_list(mm);
+    print_cache_pools(mm);
+    printf("\n================================ END ================================\n\n");
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+ *  print_kernel_info  –  full system snapshot:
+ *    RAM + swap → kernel page table → MM STRUCT (merged symbol table)
+ * ══════════════════════════════════════════════════════════════════════ */
+void print_kernel_info(struct krnl_t *os)
+{
+    /* hardware state */
+    print_memphy("RAM", os->mram);
+    print_memphy("ACTIVE SWAP", os->active_mswp);
+
+    /* kernel page-table window */
+    printf("PAGE TABLE KENEL: ");
+    const addr_t KBASE_PGN = KRNL_SPACE_BASE_ADDR / PAGING64_PAGESZ;
+    for (int i = 0; i < 4; i++) {
+        uint32_t pte = pte_get_entry_kernel_print(os, KBASE_PGN + i);
+        if      (PAGING_PAGE_PRESENT(pte))      printf("[page=%lx -> frame=%u] ", KBASE_PGN + i, PAGING_PTE_FPN(pte));
+        else if (pte & PAGING_PTE_SWAPPED_MASK) printf("[page=%lx -> swap=%u] ",  KBASE_PGN + i, PAGING_PTE_SWP(pte));
+        else                                    printf("[page=%lx -> none] ",      KBASE_PGN + i);
+    }
+    printf("\n======================\n");
+
+    /* MM STRUCT – user mm for page table/VMA/FIFO, kernel mm for caches */
+    struct mm_struct *user_mm  = (os->current && os->current->mm) ? os->current->mm : NULL;
+    struct mm_struct *krnl_mm  = os->mm;
+    struct mm_struct *pgtbl_mm = user_mm ? user_mm : krnl_mm;
+
+    printf("MM STRUCT\n");
+    print_page_table(pgtbl_mm);
+    print_vma_list(pgtbl_mm);
+    print_symtbl_merged(user_mm, krnl_mm);
+    print_fifo_list(pgtbl_mm);
+    print_cache_pools(krnl_mm);
+    printf("\n================================ END ================================\n\n");
+}
+
+static pthread_mutex_t sync_log_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void sync_log_printf(const char *fmt, ...)
+{
+    if (fmt == NULL) {
+        return;
+    }
+
+    va_list args;
+    va_start(args, fmt);
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int needed = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+    if (needed < 0) {
+        va_end(args_copy);
+        return;
+    }
+
+    size_t msg_len = (size_t)needed;
+    char *msg = (char *)malloc(msg_len + 2);
+    if (msg == NULL) {
+        va_end(args_copy);
+        return;
+    }
+    vsnprintf(msg, msg_len + 1, fmt, args_copy);
+    va_end(args_copy);
+
+    if (msg_len == 0 || msg[msg_len - 1] != '\n') {
+        msg[msg_len] = '\n';
+        msg[msg_len + 1] = '\0';
+    }
+
+    pthread_mutex_lock(&sync_log_lock);
+    fputs(msg, stdout);
+    fflush(stdout);
+    pthread_mutex_unlock(&sync_log_lock);
+
+    free(msg);
+}
