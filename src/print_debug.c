@@ -106,9 +106,10 @@ void __attribute__((destructor)) display_gantt_chart() {
  * get_vma_region_label - Returns a descriptive name for a memory region
  */
 static const char *get_vma_region_label(struct vm_rg_struct *rg) {
-    if (IS_KRNL_SPACE(rg->rg_start)) return "KERNEL";
-    if (rg->vmaid == 0)             return "USER DYNAMIC";
-    return "USER STATIC";
+    if (IS_KRNL_SPACE(rg->rg_start)) {
+        return (rg->vmaid == 0) ? "KERNEL DYNAMIC" : "KERNEL STATIC";
+    }
+    return (rg->vmaid == 0) ? "USER DYNAMIC" : "USER STATIC";
 }
 
 /**
