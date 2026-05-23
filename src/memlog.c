@@ -148,15 +148,25 @@ void print_kernel_info(struct krnl_t *os) {
     struct mm_struct *k_mm = os->mm;
 
     printf("MM STRUCT\n");
-    struct mm_struct *active_vma_mm = u_mm ? u_mm : k_mm;
-    printf("VMA | id=%lu: ", (unsigned long)active_vma_mm->mmap ? active_vma_mm->mmap->vm_id : 0);
-    for (struct vm_area_struct *v = active_vma_mm->mmap; v; v = v->vm_next)
-        printf("[%lx-%lx sbrk:%lx] ", (unsigned long)v->vm_start, (unsigned long)v->vm_end, (unsigned long)v->sbrk);
+    if (u_mm) {
+        printf("User VMAs: ");
+        for (struct vm_area_struct *v = u_mm->mmap; v; v = v->vm_next)
+            printf("[%lx-%lx sbrk:%lx] ", (unsigned long)v->vm_start, (unsigned long)v->vm_end, (unsigned long)v->sbrk);
+        printf("\n");
+    }
+
+    if (k_mm) {
+        printf("Kernel VMAs: ");
+        for (struct vm_area_struct *v = k_mm->mmap; v; v = v->vm_next)
+            printf("[%lx-%lx sbrk:%lx] ", (unsigned long)v->vm_start, (unsigned long)v->vm_end, (unsigned long)v->sbrk);
+        printf("\n");
+    }
 
     print_symtbl_merged(u_mm, k_mm);
 
+    struct mm_struct *fifo_mm = u_mm ? u_mm : k_mm;
     printf("FIFO PAGE LIST: ");
-    for (struct pgn_t *p = active_vma_mm->fifo_pgn; p; p = p->pg_next) printf("[%lu] ", (unsigned long)p->pgn);
+    for (struct pgn_t *p = fifo_mm->fifo_pgn; p; p = p->pg_next) printf("[%lu] ", (unsigned long)p->pgn);
     printf("\n================================ END ================================\n\n");
 }
 
