@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdint.h>
 
 /* ── Gantt Chart Tracking ───────────────────────────────────────────── */
 #define MAX_TIMELINE 1000
@@ -20,11 +21,11 @@ static int get_cpu_idx_from_thread() {
     static pthread_t thread_registry[MAX_CPUS_TRACKED];
     static int registry_count = 0;
     pthread_t self = pthread_self();
-    for (int i = 0; i < registry_count; i++) 
+    for (int i = 0; i < registry_count; i++)
         if (pthread_equal(thread_registry[i], self)) return i;
-    if (registry_count < MAX_CPUS_TRACKED) { 
-        thread_registry[registry_count] = self; 
-        return registry_count++; 
+    if (registry_count < MAX_CPUS_TRACKED) {
+        thread_registry[registry_count] = self;
+        return registry_count++;
     }
     return 0;
 }
@@ -36,12 +37,16 @@ static void log_scheduling(int pid) {
             for (int t = 0; t < MAX_TIMELINE; t++) sched_history[c][t] = -1;
         gantt_init_done = 1;
     }
-    int t = (int)current_time();
+    uint64_t t = current_time();
+    if (t >= MAX_TIMELINE) {
+        pthread_mutex_unlock(&gantt_tracking_lock);  /* FIX: was leaking lock on early return */
+        return;
+    }
     int c = get_cpu_idx_from_thread();
-    if (c < MAX_CPUS_TRACKED && t < MAX_TIMELINE) {
+    if (c < MAX_CPUS_TRACKED) {
         sched_history[c][t] = pid;
         if (c > max_seen_cpu_idx)  max_seen_cpu_idx = c;
-        if (t > max_seen_time_idx) max_seen_time_idx = t;
+        if ((int)t > max_seen_time_idx) max_seen_time_idx = (int)t;
     }
     pthread_mutex_unlock(&gantt_tracking_lock);
 }
@@ -110,7 +115,7 @@ static void print_storage_hex(struct memphy_struct *m) {
     int total_pages = m->maxsz / PAGING64_PAGESZ;
     printf("  STORAGE DATA:\n");
     for (int pg = 0; pg < total_pages; pg++) {
-        unsigned char *p_data = m->storage + (pg * PAGING64_PAGESZ);
+        unsigned char *p_data = (unsigned char *)m->storage + (pg * PAGING64_PAGESZ);
         int is_empty = 1;
         for (int i = 0; i < 32; i++) if (p_data[i] != 0) { is_empty = 0; break; }
 
@@ -130,15 +135,21 @@ static void print_vma_table(const char* label, struct mm_struct *mm) {
     if (!mm || !mm->mmap) return;
     printf("  %s VMAs:\n", label);
     for (struct vm_area_struct *v = mm->mmap; v; v = v->vm_next) {
-        printf("ID:%02lu   START:0x%08lx   END:0x%08lx   SBRK:0x%08lx   REGION:[%s]\n", 
-                (unsigned long)v->vm_id, (unsigned long)v->vm_start, 
+        printf("ID:%02lu   START:0x%08lx   END:0x%08lx   SBRK:0x%08lx   REGION:[%s]\n",
+                (unsigned long)v->vm_id, (unsigned long)v->vm_start,
                 (unsigned long)v->vm_end, (unsigned long)v->sbrk, get_addr_mode(v->vm_start));
     }
 }
 
+/* ── print_kernel_info lock ─────────────────────────────────────────── */
+static pthread_mutex_t print_kernel_info_lock = PTHREAD_MUTEX_INITIALIZER;
+
 void print_kernel_info(struct krnl_t *os) {
     if (!os) return;
+    pthread_mutex_lock(&print_kernel_info_lock);  /* FIX: serialize concurrent CPU snapshots */
+
     if (os->current) log_scheduling(os->current->pid);
+
     // RAM & Swap Section
     printf("\n● PHYSICAL MEMORY\n");
     if (os->mram) {
@@ -146,7 +157,7 @@ void print_kernel_info(struct krnl_t *os) {
         int tf = os->mram->maxsz / PAGING64_PAGESZ;
         for (int i = 0; i < tf; i++) {
             int used = 0;
-            for (struct framephy_struct *c = os->mram->used_fp_list; c; c = c->fp_next) 
+            for (struct framephy_struct *c = os->mram->used_fp_list; c; c = c->fp_next)
                 if (c->fpn == i) { used = 1; break; }
             printf("[%d:%c] ", i, used ? 'U' : 'F');
         }
@@ -169,10 +180,10 @@ void print_kernel_info(struct krnl_t *os) {
         }
         printf("\n");
         print_vma_table("User", u_mm);
-        
+
         printf("  FIFO List: ");
         if (!u_mm->fifo_pgn) printf("(empty)");
-        for (struct pgn_t *p = u_mm->fifo_pgn; p; p = p->pg_next) 
+        for (struct pgn_t *p = u_mm->fifo_pgn; p; p = p->pg_next)
             printf("[%lu]%s", (unsigned long)p->pgn, p->pg_next ? "->" : "");
         printf("\n");
     }
@@ -182,22 +193,20 @@ void print_kernel_info(struct krnl_t *os) {
         print_vma_table("Kernel", k_mm);
     }
 
-    printf("\n● KERNEL PAGING MAP\n"); // Removed the leading space for alignment
-const addr_t KBASE_PGN = KRNL_DYNAMIC_START / PAGING64_PAGESZ;
-
-for (int i = 0; i < 4; i++) {
-    addr_t current_pgn = KBASE_PGN + i;
-    uint32_t pte = walk_kernel_pt(os, current_pgn);
-
-    if (PAGING_PAGE_PRESENT(pte)) {
-        // Use %05lx to keep the address width consistent
-        printf("  [0x%05lx -> PFN %-2d] ", (unsigned long)current_pgn, PAGING_PTE_FPN(pte));
-    } else {
-        printf("  [0x%05lx -> EMPTY] ", (unsigned long)current_pgn);
+    printf("\n● KERNEL PAGING MAP\n");
+    const addr_t KBASE_PGN = KRNL_DYNAMIC_START / PAGING64_PAGESZ;
+    for (int i = 0; i < 4; i++) {
+        addr_t current_pgn = KBASE_PGN + i;
+        uint32_t pte = walk_kernel_pt(os, current_pgn);
+        if (PAGING_PAGE_PRESENT(pte))
+            printf("  [0x%05lx -> PFN %-2d] ", (unsigned long)current_pgn, PAGING_PTE_FPN(pte));
+        else
+            printf("  [0x%05lx -> EMPTY] ", (unsigned long)current_pgn);
     }
-}
-printf("\n");
+    printf("\n");
     printf("\n--------------------------------------------------------------------------------\n");
+
+    pthread_mutex_unlock(&print_kernel_info_lock);  /* FIX: must unlock after all printf done */
 }
 
 /* ── Synchronized Logging ───────────────────────────────────────────── */
@@ -216,7 +225,7 @@ void sync_log_printf(const char *fmt, ...) {
     va_end(args_copy);
     if (msg[needed - 1] != '\n') { msg[needed] = '\n'; msg[needed + 1] = '\0'; }
     pthread_mutex_lock(&sync_log_lock);
-    fputs(msg, stdout); 
+    fputs(msg, stdout);
     fflush(stdout);
     pthread_mutex_unlock(&sync_log_lock);
     free(msg);
