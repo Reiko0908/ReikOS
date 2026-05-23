@@ -1,0 +1,202 @@
+Time slot   0
+ld_routine
+	Loaded a process at input/proc/s0, PID: 1 PRIO: 0
+Time slot   1
+	Loaded a process at input/proc/s1, PID: 2 PRIO: 1
+	CPU 3: Dispatched process  1
+	CPU 1: Dispatched process  2
+	CPU 3: Put process  1 to run queue (pc=1/15)
+	CPU 3: Dispatched process  1
+	Loaded a process at input/proc/s2, PID: 3 PRIO: 2
+	CPU 1: Put process  2 to run queue (pc=1/7)
+	CPU 1: Dispatched process  2
+Time slot   2
+	CPU 2: Dispatched process  3
+	CPU 3: Put process  1 to run queue (pc=2/15)
+	CPU 3: Dispatched process  1
+	CPU 2: Put process  3 to run queue (pc=1/12)
+Time slot   3
+	CPU 2: Dispatched process  3
+	CPU 1: Put process  2 to run queue (pc=2/7)
+	CPU 1: Dispatched process  2
+	Loaded a process at input/proc/s3, PID: 4 PRIO: 3
+	CPU 4: Dispatched process  4
+	CPU 4: Put process  4 to run queue (pc=1/11)
+	CPU 4: Dispatched process  4
+	CPU 2: Put process  3 to run queue (pc=2/12)
+Time slot   4
+	Loaded a process at input/proc/s4, PID: 5 PRIO: 4
+	CPU 3: Put process  1 to run queue (pc=3/15)
+	CPU 1: Put process  2 to run queue (pc=3/7)
+	CPU 0: Dispatched process  5
+	CPU 3: Dispatched process  1
+	CPU 2: Dispatched process  3
+	CPU 1: Dispatched process  2
+	CPU 4: Put process  4 to run queue (pc=2/11)
+	CPU 4: Dispatched process  4
+	CPU 3: Put process  1 to run queue (pc=4/15)
+	CPU 3: Dispatched process  1
+	CPU 2: Put process  3 to run queue (pc=3/12)
+Time slot   5
+	CPU 2: Dispatched process  3
+	Loaded a process at input/proc/v1, PID: 6 PRIO: 0
+	CPU 0: Put process  5 to run queue (pc=1/7)
+	CPU 0: Dispatched process  6
+	CPU 1: Put process  2 to run queue (pc=4/7)
+	CPU 1: Dispatched process  2
+	CPU 4: Put process  4 to run queue (pc=3/11)
+	CPU 4: Dispatched process  4
+	CPU 3: Put process  1 to run queue (pc=5/15)
+	CPU 3: Dispatched process  1
+	Loaded a process at input/proc/v2, PID: 7 PRIO: 1
+Time slot   6
+	CPU 1: Put process  2 to run queue (pc=5/7)
+	CPU 0: Put process  6 to run queue (pc=1/7)
+	CPU 0: Dispatched process  6
+	CPU 1: Dispatched process  7
+	CPU 2: Put process  3 to run queue (pc=4/12)
+	CPU 2: Dispatched process  2
+	CPU 4: Put process  4 to run queue (pc=4/11)
+	CPU 4: Dispatched process  3
+	CPU 3: Put process  1 to run queue (pc=6/15)
+	CPU 3: Dispatched process  1
+	CPU 2: Put process  2 to run queue (pc=6/7)
+	CPU 2: Dispatched process  2
+	CPU 1: Put process  7 to run queue (pc=1/8)
+Time slot   7
+	CPU 0: Put process  6 to run queue (pc=2/7)
+	CPU 0: Dispatched process  6
+	CPU 1: Dispatched process  7
+	Loaded a process at input/proc/s0, PID: 8 PRIO: 2
+	CPU 4: Put process  3 to run queue (pc=5/12)
+	CPU 2: Processed  2 has finished
+	CPU 2: Dispatched process  8
+	CPU 4: Dispatched process  3
+Time slot   8
+	CPU 1: Put process  7 to run queue (pc=2/8)
+	CPU 1: Dispatched process  7
+	CPU 3: Put process  1 to run queue (pc=7/15)
+	CPU 3: Dispatched process  1
+	CPU 0: Put process  6 to run queue (pc=3/7)
+	CPU 0: Dispatched process  6
+	CPU 4: Put process  3 to run queue (pc=6/12)
+	CPU 4: Dispatched process  3
+	CPU 3: Put process  1 to run queue (pc=8/15)
+Time slot   9
+	CPU 1: Put process  7 to run queue (pc=3/8)
+	CPU 1: Dispatched process  7
+	CPU 3: Dispatched process  1
+	CPU 0: Put process  6 to run queue (pc=4/7)
+	CPU 0: Dispatched process  6
+	CPU 2: Put process  8 to run queue (pc=1/15)
+	CPU 2: Dispatched process  8
+	CPU 4: Put process  3 to run queue (pc=7/12)
+Time slot  10
+	CPU 4: Dispatched process  3
+	CPU 0: Put process  6 to run queue (pc=5/7)
+	CPU 2: Put process  8 to run queue (pc=2/15)
+	CPU 1: Put process  7 to run queue (pc=4/8)
+	CPU 2: Dispatched process  8
+	CPU 1: Dispatched process  7
+	CPU 0: Dispatched process  6
+	CPU 3: Put process  1 to run queue (pc=9/15)
+	CPU 3: Dispatched process  1
+	CPU 4: Put process  3 to run queue (pc=8/12)
+	CPU 4: Dispatched process  3
+	CPU 3: Put process  1 to run queue (pc=10/15)
+Time slot  11
+	CPU 0: Put process  6 to run queue (pc=6/7)
+	CPU 3: Dispatched process  1
+	CPU 0: Dispatched process  6
+	CPU 1: Put process  7 to run queue (pc=5/8)
+	CPU 1: Dispatched process  7
+	CPU 2: Put process  8 to run queue (pc=3/15)
+	CPU 2: Dispatched process  8
+	CPU 4: Put process  3 to run queue (pc=9/12)
+Time slot  12
+	CPU 4: Dispatched process  3
+	CPU 2: Put process  8 to run queue (pc=4/15)
+	CPU 2: Dispatched process  8
+	CPU 1: Put process  7 to run queue (pc=6/8)
+	CPU 1: Dispatched process  7
+	CPU 0: Processed  6 has finished
+	CPU 0: Dispatched process  4
+	CPU 3: Put process  1 to run queue (pc=11/15)
+	CPU 3: Dispatched process  1
+	CPU 4: Put process  3 to run queue (pc=10/12)
+	CPU 4: Dispatched process  3
+	CPU 3: Put process  1 to run queue (pc=12/15)
+Time slot  13
+	CPU 0: Put process  4 to run queue (pc=5/11)
+	CPU 1: Put process  7 to run queue (pc=7/8)
+	CPU 1: Dispatched process  7
+	CPU 0: Dispatched process  4
+	CPU 3: Dispatched process  1
+	CPU 2: Put process  8 to run queue (pc=5/15)
+	CPU 2: Dispatched process  8
+	CPU 3: Put process  1 to run queue (pc=13/15)
+Time slot  14
+	CPU 2: Put process  8 to run queue (pc=6/15)
+	CPU 4: Put process  3 to run queue (pc=11/12)
+	CPU 4: Dispatched process  3
+	CPU 1: Processed  7 has finished
+	CPU 1: Dispatched process  5
+	CPU 0: Put process  4 to run queue (pc=6/11)
+	CPU 0: Dispatched process  4
+	CPU 3: Dispatched process  1
+	CPU 2: Dispatched process  8
+	CPU 4: Processed  3 has finished
+	CPU 2: Put process  8 to run queue (pc=7/15)
+	CPU 2: Dispatched process  8
+	CPU 1: Put process  5 to run queue (pc=2/7)
+Time slot  15
+	CPU 3: Put process  1 to run queue (pc=14/15)
+	CPU 1: Dispatched process  5
+	CPU 4 stopped
+	CPU 3: Dispatched process  1
+	CPU 0: Put process  4 to run queue (pc=7/11)
+	CPU 0: Dispatched process  4
+	CPU 3: Processed  1 has finished
+Time slot  16
+	CPU 1: Put process  5 to run queue (pc=3/7)
+	CPU 0: Put process  4 to run queue (pc=8/11)
+	CPU 3 stopped
+	CPU 0: Dispatched process  4
+	CPU 1: Dispatched process  5
+	CPU 2: Put process  8 to run queue (pc=8/15)
+	CPU 2: Dispatched process  8
+	CPU 2: Put process  8 to run queue (pc=9/15)
+Time slot  17
+	CPU 2: Dispatched process  8
+	CPU 0: Put process  4 to run queue (pc=9/11)
+	CPU 0: Dispatched process  4
+	CPU 1: Put process  5 to run queue (pc=4/7)
+	CPU 1: Dispatched process  5
+	CPU 2: Put process  8 to run queue (pc=10/15)
+Time slot  18
+	CPU 0: Put process  4 to run queue (pc=10/11)
+	CPU 1: Put process  5 to run queue (pc=5/7)
+	CPU 1: Dispatched process  5
+	CPU 0: Dispatched process  4
+	CPU 2: Dispatched process  8
+	CPU 1: Put process  5 to run queue (pc=6/7)
+	CPU 1: Dispatched process  5
+Time slot  19
+	CPU 0: Processed  4 has finished
+	CPU 0 stopped
+	CPU 2: Put process  8 to run queue (pc=11/15)
+	CPU 2: Dispatched process  8
+	CPU 2: Put process  8 to run queue (pc=12/15)
+Time slot  20
+	CPU 2: Dispatched process  8
+	CPU 1: Processed  5 has finished
+	CPU 1 stopped
+Time slot  21
+	CPU 2: Put process  8 to run queue (pc=13/15)
+	CPU 2: Dispatched process  8
+Time slot  22
+	CPU 2: Put process  8 to run queue (pc=14/15)
+	CPU 2: Dispatched process  8
+Time slot  23
+	CPU 2: Processed  8 has finished
+	CPU 2 stopped

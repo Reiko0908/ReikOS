@@ -107,9 +107,3 @@ ID:00   START:0xff00000000000000   END:0xff00000000001000   SBRK:0xff00000000000
 Time slot   5
 	CPU 0: Processed  1 has finished
 	CPU 0 stopped
-
-=== SCHEDULING GANTT CHART ===
-
-Time  : 00 01 02 03 04 
-CPU 0 : -- P1 P1 P1 P1 
-
