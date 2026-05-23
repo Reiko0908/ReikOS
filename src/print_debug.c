@@ -84,18 +84,13 @@ void __attribute__((destructor)) display_gantt_chart() {
         for (int t = block_start; t <= block_end; t++) printf("%02d ", t);
         printf("\n");
 
-        /* Print each CPU's workload */
+        /* Print each CPU's workload (No Color) */
         for (int c = 0; c <= max_cpu_seen; c++) {
             printf("CPU %d : ", c);
             for (int t = block_start; t <= block_end; t++) {
                 int p = schedule_matrix[c][t];
-                if (p == -1) {
-                    printf("-- ");
-                } else {
-                    /* Color processes for better visual distinction */
-                    int color = 31 + (p % 6);
-                    printf("\033[1;%dmP%d\033[0m ", color, p);
-                }
+                if (p == -1) printf("-- ");
+                else         printf("P%d ", p);
             }
             printf("\n");
         }
@@ -106,6 +101,15 @@ void __attribute__((destructor)) display_gantt_chart() {
 /* ─────────────────────────────────────────────────────────────────────────
  *  Memory Inspection Helpers
  * ───────────────────────────────────────────────────────────────────────── */
+
+/**
+ * get_vma_region_label - Returns a descriptive name for a memory region
+ */
+static const char *get_vma_region_label(struct vm_rg_struct *rg) {
+    if (IS_KRNL_SPACE(rg->rg_start)) return "KERNEL";
+    if (rg->vmaid == 0)             return "USER DYNAMIC";
+    return "USER STATIC";
+}
 
 /**
  * show_physical_layer - Prints first 16 bytes per page of a memory device
@@ -142,10 +146,10 @@ void system_dump(struct krnl_t *os) {
     show_physical_layer("Swap Storage", os->active_mswp);
 
     /* Virtual Layer (Segmentation/VMAs) */
-    struct mm_struct *mm = (os->current && os->current->mm) ? os->current->mm : os->mm;
+    struct mm_struct *active_mm = (os->current && os->current->mm) ? os->current->mm : os->mm;
     
-    printf("Memory Areas (VMAs):");
-    for (struct vm_area_struct *vma = mm->mmap; vma; vma = vma->vm_next) {
+    printf("Segments (VMAs):");
+    for (struct vm_area_struct *vma = active_mm->mmap; vma; vma = vma->vm_next) {
         printf(" [ID:%lu 0x%lx-0x%lx, brk:0x%lx]", 
                (unsigned long)vma->vm_id, 
                (unsigned long)vma->vm_start, 
@@ -153,16 +157,21 @@ void system_dump(struct krnl_t *os) {
                (unsigned long)vma->sbrk);
     }
 
+    /* Symbol Table with Region Labels */
     printf("\nSymbols (REGs): ");
     for (int i = 0; i < PAGING_MAX_SYMTBL_SZ; i++) {
         struct mm_struct *u_mm = os->current ? os->current->mm : NULL;
-        if (u_mm && (u_mm->symrgtbl[i].rg_start || u_mm->symrgtbl[i].rg_end))
-            printf("[U%d: 0x%lx-0x%lx] ", i, (unsigned long)u_mm->symrgtbl[i].rg_start, (unsigned long)u_mm->symrgtbl[i].rg_end);
-        if (os->mm && (os->mm->symrgtbl[i].rg_start || os->mm->symrgtbl[i].rg_end))
-            printf("[K%d: 0x%lx-0x%lx] ", i, (unsigned long)os->mm->symrgtbl[i].rg_start, (unsigned long)os->mm->symrgtbl[i].rg_end);
+        if (u_mm && (u_mm->symrgtbl[i].rg_start || u_mm->symrgtbl[i].rg_end)) {
+            struct vm_rg_struct *rg = &u_mm->symrgtbl[i];
+            printf("[U%d: 0x%lx-0x%lx (%s)] ", i, (unsigned long)rg->rg_start, (unsigned long)rg->rg_end, get_vma_region_label(rg));
+        }
+        if (os->mm && (os->mm->symrgtbl[i].rg_start || os->mm->symrgtbl[i].rg_end)) {
+            struct vm_rg_struct *rg = &os->mm->symrgtbl[i];
+            printf("[K%d: 0x%lx-0x%lx (%s)] ", i, (unsigned long)rg->rg_start, (unsigned long)rg->rg_end, get_vma_region_label(rg));
+        }
     }
 
     printf("\n\n");
-    }
+}
 
 void pg_dump(struct pcb_t *p, addr_t s, addr_t e) { (void)p; (void)s; (void)e; }
