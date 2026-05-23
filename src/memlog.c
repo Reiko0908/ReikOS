@@ -63,10 +63,15 @@ void gantt_dump() {
     fflush(stdout);
 }
 
-/* ── Memory Region Classification ──────────────────────────────────── */
-static const char *get_vma_label(struct vm_rg_struct *rg) {
-    if (IS_KRNL_SPACE(rg->rg_start)) return (rg->vmaid == 0) ? "KERNEL DYNAMIC" : "KERNEL STATIC";
-    return (rg->vmaid == 0) ? "USER DYNAMIC" : "USER STATIC";
+/* ── Memory Mode Identification (Simple addr_t check) ──────────────── */
+static const char *get_addr_mode(addr_t addr) {
+    if (IS_USER_DYNAMIC_SPACE(addr)) return "USER DYNAMIC";
+    if (IS_USER_STATIC_SPACE(addr))  return "USER STATIC";
+    if (IS_KRNL_DYNAMIC_SPACE(addr)) return "KERNEL DYNAMIC";
+    if (IS_KRNL_STATIC_SPACE(addr))  return "KERNEL STATIC";
+    if (IS_CANONICAL_HOLE(addr))     return "CANONICAL_HOLE";
+
+    return "UNKNOWN";
 }
 
 /* ── Verbose Helpers ────────────────────────────────────────────────── */
@@ -106,12 +111,12 @@ static void print_symtbl_merged(struct mm_struct *u_mm, struct mm_struct *k_mm) 
     for (int i = 0; i < PAGING_MAX_SYMTBL_SZ; i++) {
         if (u_mm && (u_mm->symrgtbl[i].rg_start || u_mm->symrgtbl[i].rg_end)) {
             struct vm_rg_struct *rg = &u_mm->symrgtbl[i];
-            printf("[U%d:0x%lx-0x%lx (%s)] ", i, (unsigned long)rg->rg_start, (unsigned long)rg->rg_end, get_vma_label(rg));
+            printf("[%c%d:0x%lx-0x%lx (%s)] ", (u_mm == k_mm ? 'K' : 'U'), i, (unsigned long)rg->rg_start, (unsigned long)rg->rg_end, get_addr_mode(rg->rg_start));
             empty = 0;
         }
         if (k_mm && (k_mm->symrgtbl[i].rg_start || k_mm->symrgtbl[i].rg_end)) {
             struct vm_rg_struct *rg = &k_mm->symrgtbl[i];
-            printf("[K%d:0x%lx-0x%lx (%s)] ", i, (unsigned long)rg->rg_start, (unsigned long)rg->rg_end, get_vma_label(rg));
+            printf("[K%d:0x%lx-0x%lx (%s)] ", i, (unsigned long)rg->rg_start, (unsigned long)rg->rg_end, get_addr_mode(rg->rg_start));
             empty = 0;
         }
     }
