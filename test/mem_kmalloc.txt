@@ -1,0 +1,115 @@
+Time slot   0
+ld_routine
+	Loaded a process at input/proc/t3, PID: 1 PRIO: 1
+Time slot   1
+	CPU 0: Dispatched process  1
+[EXEC] KMALLOC | args=(2024,0,0,0)
+
+● PHYSICAL MEMORY
+  RAM Frames: [0:U] [1:F] [2:F] [3:F] 
+  STORAGE DATA:
+  F0  [ -- empty / zeroed -- ]
+  F1  [ -- empty / zeroed -- ]
+  F2  [ -- empty / zeroed -- ]
+  F3  [ -- empty / zeroed -- ]
+
+● VIRTUAL MEMORY
+  User Page Table: [0->x] [1->x] [2->x] [3->x] [4->x] [5->x] 
+  User VMAs:
+ID:00   START:0x00000000   END:0x00000000   SBRK:0x00000000   REGION:[USER DYNAMIC]
+  FIFO List: (empty)
+
+  Kernel VMAs:
+ID:00   START:0xff00000000000000   END:0xff00000000001000   SBRK:0xff000000000007e8   REGION:[KRNL DYNAMIC]
+
+● KERNEL PAGING MAP
+  [0xff00000000000 -> PFN 0 ]   [0xff00000000001 -> EMPTY]   [0xff00000000002 -> EMPTY]   [0xff00000000003 -> EMPTY] 
+
+--------------------------------------------------------------------------------
+Time slot   2
+	CPU 0: Put process  1 to run queue (pc=1/4)
+	CPU 0: Dispatched process  1
+[EXEC] ALLOC | args=(4096,2,0,0)
+
+● PHYSICAL MEMORY
+  RAM Frames: [0:U] [1:U] [2:F] [3:F] 
+  STORAGE DATA:
+  F0  [ -- empty / zeroed -- ]
+  F1  [ -- empty / zeroed -- ]
+  F2  [ -- empty / zeroed -- ]
+  F3  [ -- empty / zeroed -- ]
+
+● VIRTUAL MEMORY
+  User Page Table: [0->f1] [1->x] [2->x] [3->x] [4->x] [5->x] 
+  User VMAs:
+ID:00   START:0x00000000   END:0x00001000   SBRK:0x00001000   REGION:[USER DYNAMIC]
+  FIFO List: [0]
+
+  Kernel VMAs:
+ID:00   START:0xff00000000000000   END:0xff00000000001000   SBRK:0xff000000000007e8   REGION:[KRNL DYNAMIC]
+
+● KERNEL PAGING MAP
+  [0xff00000000000 -> PFN 0 ]   [0xff00000000001 -> EMPTY]   [0xff00000000002 -> EMPTY]   [0xff00000000003 -> EMPTY] 
+
+--------------------------------------------------------------------------------
+Time slot   3
+	CPU 0: Put process  1 to run queue (pc=2/4)
+	CPU 0: Dispatched process  1
+[EXEC] ALLOC | args=(4096,3,0,0)
+
+● PHYSICAL MEMORY
+  RAM Frames: [0:U] [1:U] [2:U] [3:F] 
+  STORAGE DATA:
+  F0  [ -- empty / zeroed -- ]
+  F1  [ -- empty / zeroed -- ]
+  F2  [ -- empty / zeroed -- ]
+  F3  [ -- empty / zeroed -- ]
+
+● VIRTUAL MEMORY
+  User Page Table: [0->f1] [1->f2] [2->x] [3->x] [4->x] [5->x] 
+  User VMAs:
+ID:00   START:0x00000000   END:0x00002000   SBRK:0x00002000   REGION:[USER DYNAMIC]
+  FIFO List: [1]->[0]
+
+  Kernel VMAs:
+ID:00   START:0xff00000000000000   END:0xff00000000001000   SBRK:0xff000000000007e8   REGION:[KRNL DYNAMIC]
+
+● KERNEL PAGING MAP
+  [0xff00000000000 -> PFN 0 ]   [0xff00000000001 -> EMPTY]   [0xff00000000002 -> EMPTY]   [0xff00000000003 -> EMPTY] 
+
+--------------------------------------------------------------------------------
+Time slot   4
+	CPU 0: Put process  1 to run queue (pc=3/4)
+	CPU 0: Dispatched process  1
+[EXEC] KMALLOC | args=(2024,1,0,0)
+
+● PHYSICAL MEMORY
+  RAM Frames: [0:U] [1:U] [2:U] [3:F] 
+  STORAGE DATA:
+  F0  [ -- empty / zeroed -- ]
+  F1  [ -- empty / zeroed -- ]
+  F2  [ -- empty / zeroed -- ]
+  F3  [ -- empty / zeroed -- ]
+
+● VIRTUAL MEMORY
+  User Page Table: [0->f1] [1->f2] [2->x] [3->x] [4->x] [5->x] 
+  User VMAs:
+ID:00   START:0x00000000   END:0x00002000   SBRK:0x00002000   REGION:[USER DYNAMIC]
+  FIFO List: [1]->[0]
+
+  Kernel VMAs:
+ID:00   START:0xff00000000000000   END:0xff00000000001000   SBRK:0xff00000000000fd0   REGION:[KRNL DYNAMIC]
+
+● KERNEL PAGING MAP
+  [0xff00000000000 -> PFN 0 ]   [0xff00000000001 -> EMPTY]   [0xff00000000002 -> EMPTY]   [0xff00000000003 -> EMPTY] 
+
+--------------------------------------------------------------------------------
+Time slot   5
+	CPU 0: Processed  1 has finished
+	CPU 0 stopped
+
+=== SCHEDULING GANTT CHART ===
+
+Time  : 00 01 02 03 04 
+CPU 0 : -- P1 P1 P1 P1 
+
