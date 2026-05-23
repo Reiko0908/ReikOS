@@ -138,7 +138,7 @@ static void print_vma_table(const char* label, struct mm_struct *mm) {
 
 void print_kernel_info(struct krnl_t *os) {
     if (!os) return;
-
+    if (os->current) log_scheduling(os->current->pid);
     // RAM & Swap Section
     printf("\n● PHYSICAL MEMORY\n");
     if (os->mram) {
