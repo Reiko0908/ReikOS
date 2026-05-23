@@ -193,7 +193,7 @@ int vmap_pgd_memset(struct pcb_t *caller, addr_t addr, int pgnum) {
     return -1;
 
   for (int pgit = 0; pgit < pgnum; pgit++) {
-    addr_t pgn = PAGING64_PGN(addr + (pgit << PAGING64_ADDR_PT_SHIFT));
+    addr_t pgn = PAGING64_PGN((addr + (pgit << PAGING64_ADDR_PT_SHIFT)));
     addr_t *pte = get_pte(caller->mm, pgn);
     if (pte)
       *pte = pattern;
@@ -240,7 +240,7 @@ addr_t vmap_page_range(struct pcb_t *caller, addr_t addr, int pgnum,
   ret_rg->rg_start = addr;
   ret_rg->rg_end = addr + (pgnum << PAGING64_ADDR_PT_SHIFT);
   for (int pgit = 0; pgit < pgnum && fp != NULL; pgit++) {
-    addr_t pgn = PAGING64_PGN(addr + (pgit << PAGING64_ADDR_PT_SHIFT));
+    addr_t pgn = PAGING64_PGN((addr + (pgit << PAGING64_ADDR_PT_SHIFT)));
     pte_set_fpn(caller, pgn, fp->fpn);
     enlist_pgn_node(&caller->mm->fifo_pgn, pgn);
     fp = fp->fp_next;
@@ -257,7 +257,7 @@ addr_t krnl_vmap_page_range(struct pcb_t *caller, addr_t addr, int pgnum,
   ret_rg->rg_start = addr;
   ret_rg->rg_end = addr + (pgnum << PAGING64_ADDR_PT_SHIFT);
   for (int pgit = 0; pgit < pgnum && fp != NULL; pgit++) {
-    addr_t pgn = PAGING64_PGN(addr + (pgit << PAGING64_ADDR_PT_SHIFT));
+    addr_t pgn = PAGING64_PGN((addr + (pgit << PAGING64_ADDR_PT_SHIFT)));
     krnl_pte_set_fpn(caller, pgn, fp->fpn);
     fp = fp->fp_next;
   }
@@ -394,7 +394,7 @@ addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
 
   if (vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg) < 0) {
     struct framephy_struct *fpit = frm_lst;
-    MEMPHY_put_freefp(calle->krnl->mram, fpit->fpn);
+    MEMPHY_put_freefp(caller->krnl->mram, fpit->fpn);
     while (fpit != NULL) {
       struct framephy_struct *next = fpit->fp_next;
       free(fpit);
