@@ -208,9 +208,9 @@ int user_dynamic_range(addr_t mapstart, int incpgnum) {
   if (mapsz / PAGING64_PAGESZ != (addr_t)incpgnum)
     return 0; /* multiplication overflow */
   /* must be fully inside USER_SPACE and not cross into canonical hole */
-  if (mapstart < USER_SPACE_START || mapstart > USER_SPACE_END)
+  if (mapstart < USER_DYNAMIC_START || mapstart > USER_DYNAMIC_END)
     return 0;
-  if (mapstart > USER_SPACE_END - (mapsz - 1))
+  if (mapstart > USER_DYNAMIC_END - (mapsz - 1))
     return 0; /* crosses into canonical hole */
 
   return 1;
