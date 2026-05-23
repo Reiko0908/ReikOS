@@ -105,6 +105,32 @@ void print_memphy(const char *name, struct memphy_struct *m) {
     printf("======================\n");
 }
 
+/* ── Page Table Walking ────────────────────────────────────────────── */
+
+static uint32_t walk_pt(struct mm_struct *mm, addr_t pgn) {
+    if (!mm || !mm->pgd) return 0;
+    addr_t pgd_i, p4d_i, pud_i, pmd_i, pt_i;
+    get_pd_from_pagenum(pgn, &pgd_i, &p4d_i, &pud_i, &pmd_i, &pt_i);
+    addr_t *v = mm->pgd;
+    if (!v[pgd_i]) return 0; v = (addr_t *)v[pgd_i];
+    if (!v[p4d_i]) return 0; v = (addr_t *)v[p4d_i];
+    if (!v[pud_i]) return 0; v = (addr_t *)v[pud_i];
+    if (!v[pmd_i]) return 0; v = (addr_t *)v[pmd_i];
+    return (uint32_t)v[pt_i];
+}
+
+static uint32_t walk_kernel_pt(struct krnl_t *os, addr_t pgn) {
+    if (!os || !os->krnl_pgd) return 0;
+    addr_t pgd_i, p4d_i, pud_i, pmd_i, pt_i;
+    get_pd_from_pagenum(pgn, &pgd_i, &p4d_i, &pud_i, &pmd_i, &pt_i);
+    addr_t *v = os->krnl_pgd;
+    if (!v[pgd_i]) return 0; v = (addr_t *)v[pgd_i];
+    if (!v[p4d_i]) return 0; v = (addr_t *)v[p4d_i];
+    if (!v[pud_i]) return 0; v = (addr_t *)v[pud_i];
+    if (!v[pmd_i]) return 0; v = (addr_t *)v[pmd_i];
+    return (uint32_t)v[pt_i];
+}
+
 static void print_symtbl_merged(struct mm_struct *u_mm, struct mm_struct *k_mm) {
     printf("\nSYMBOL TABLE: ");
     int empty = 1;
@@ -126,7 +152,15 @@ static void print_symtbl_merged(struct mm_struct *u_mm, struct mm_struct *k_mm) 
 
 void print_mm_struct(struct mm_struct *mm) {
     if (!mm) return;
-    printf("MM STRUCT\nVMA | id=%lu: ", (unsigned long)mm->mmap ? mm->mmap->vm_id : 0);
+    printf("MM STRUCT\nPAGE TABLE: ");
+    for (int i = 0; i < 6; i++) {
+        uint32_t pte = walk_pt(mm, i);
+        if      (PAGING_PAGE_PRESENT(pte))      printf("[%d->f%u] ", i, PAGING_PTE_FPN(pte));
+        else if (pte & PAGING_PTE_SWAPPED_MASK) printf("[%d->s%u] ", i, PAGING_PTE_SWP(pte));
+        else                                    printf("[%d->x] ", i);
+    }
+
+    printf("\nVMA | id=%lu: ", (unsigned long)mm->mmap ? mm->mmap->vm_id : 0);
     for (struct vm_area_struct *v = mm->mmap; v; v = v->vm_next)
         printf("[%lx-%lx sbrk:%lx] ", (unsigned long)v->vm_start, (unsigned long)v->vm_end, (unsigned long)v->sbrk);
     
@@ -144,10 +178,33 @@ void print_kernel_info(struct krnl_t *os) {
     print_memphy("RAM", os->mram);
     print_memphy("ACTIVE SWAP", os->active_mswp);
 
+    printf("PAGE TABLE KERNEL: ");
+    const addr_t KBASE_PGN = KRNL_DYNAMIC_START / PAGING64_PAGESZ;
+    for (int i = 0; i < 4; i++) {
+        uint32_t pte = walk_kernel_pt(os, KBASE_PGN + i);
+        if (PAGING_PAGE_PRESENT(pte)) printf("[%lx->f%u] ", KBASE_PGN + i, PAGING_PTE_FPN(pte));
+        else                          printf("[%lx->x] ", KBASE_PGN + i);
+    }
+    printf("\n======================\n");
+
     struct mm_struct *u_mm = (os->current && os->current->mm) ? os->current->mm : NULL;
     struct mm_struct *k_mm = os->mm;
 
     printf("MM STRUCT\n");
+    struct mm_struct *active_vma_mm = u_mm ? u_mm : k_mm;
+    
+    /* User PT if available */
+    if (u_mm) {
+        printf("PAGE TABLE: ");
+        for (int i = 0; i < 6; i++) {
+            uint32_t pte = walk_pt(u_mm, i);
+            if      (PAGING_PAGE_PRESENT(pte))      printf("[%d->f%u] ", i, PAGING_PTE_FPN(pte));
+            else if (pte & PAGING_PTE_SWAPPED_MASK) printf("[%d->s%u] ", i, PAGING_PTE_SWP(pte));
+            else                                    printf("[%d->x] ", i);
+        }
+        printf("\n");
+    }
+
     if (u_mm) {
         printf("User VMAs: ");
         for (struct vm_area_struct *v = u_mm->mmap; v; v = v->vm_next)
