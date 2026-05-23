@@ -394,9 +394,9 @@ addr_t vm_map_ram(struct pcb_t *caller, addr_t astart, addr_t aend,
 
   if (vmap_page_range(caller, mapstart, incpgnum, frm_lst, ret_rg) < 0) {
     struct framephy_struct *fpit = frm_lst;
+    MEMPHY_put_freefp(calle->krnl->mram, fpit->fpn);
     while (fpit != NULL) {
       struct framephy_struct *next = fpit->fp_next;
-      MEMPHY_put_freefp(caller->krnl->mram, fpit->fpn);
       free(fpit);
       fpit = next;
     }

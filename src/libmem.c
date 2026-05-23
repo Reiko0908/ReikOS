@@ -599,26 +599,18 @@ int __slab_alloc(struct pcb_t *caller, struct kcache_pool_struct *pool) {
       break;
     }
   }
-
-  if (rgid == -1) {
-    return -1;
-  }
+  if (rgid == -1) return -1;
 
   addr_t new_slab_addr;
   if (__kmalloc(caller, 0, rgid, slab_size, &new_slab_addr) != 0) {
     return -1;
   }
-
   krnl_mm->symrgtbl[rgid].rg_start = 0;
   krnl_mm->symrgtbl[rgid].rg_end   = 0;
   krnl_mm->symrgtbl[rgid].mode_bit = 0;
 
   addr_t base_addr = new_slab_addr;
-  if (pool->align > 0 && base_addr % pool->align != 0) {
-    base_addr += pool->align - (base_addr % pool->align);
-  }
-
-  int num_objs = (int)(slab_size - (base_addr - new_slab_addr)) / pool->size;
+  int num_objs = (int)slab_size / pool->size;
   struct slab_struct *new_slab = malloc(sizeof(struct slab_struct));
   new_slab->addr = base_addr;
   new_slab->free_list = malloc((size_t)num_objs * sizeof(struct free_obj));
