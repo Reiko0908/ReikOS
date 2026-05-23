@@ -1,59 +1,87 @@
 #include "memlog.h"
+#include "mm64.h"
+#include "timer.h"
+#include <pthread.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* ── forward declarations ──────────────────────────────────────────── */
-static uint32_t pte_get_entry_print(struct mm_struct *mm, addr_t pgn);
-static void print_symtbl_merged(struct mm_struct *user_mm, struct mm_struct *krnl_mm);
-static const char *addr_region_name(addr_t addr);
-static const char *rg_region_name(addr_t start, addr_t end);
+/* ── Gantt Chart Tracking (Integrated) ──────────────────────────────── */
+#define MAX_TIMELINE 1000
+#define MAX_CPUS_TRACKED 16
+static int sched_history[MAX_CPUS_TRACKED][MAX_TIMELINE];
+static int gantt_init_done = 0;
+static int max_seen_cpu_idx = 0;
+static int max_seen_time_idx = 0;
+static pthread_mutex_t gantt_tracking_lock = PTHREAD_MUTEX_INITIALIZER;
 
-/* ══════════════════════════════════════════════════════════════════════
- *  Low-level helpers
- * ══════════════════════════════════════════════════════════════════════ */
+static int get_cpu_idx_from_thread() {
+    static pthread_t thread_registry[MAX_CPUS_TRACKED];
+    static int registry_count = 0;
+    pthread_t self = pthread_self();
+    for (int i = 0; i < registry_count; i++) if (pthread_equal(thread_registry[i], self)) return i;
+    if (registry_count < MAX_CPUS_TRACKED) { thread_registry[registry_count] = self; return registry_count++; }
+    return 0;
+}
 
-void print_frame_list(const char *name, struct framephy_struct *head)
-{
+static void log_scheduling(int pid) {
+    pthread_mutex_lock(&gantt_tracking_lock);
+    if (!gantt_init_done) {
+        for (int c = 0; c < MAX_CPUS_TRACKED; c++)
+            for (int t = 0; t < MAX_TIMELINE; t++) sched_history[c][t] = -1;
+        gantt_init_done = 1;
+    }
+    int t = (int)current_time();
+    int c = get_cpu_idx_from_thread();
+    if (c < MAX_CPUS_TRACKED && t < MAX_TIMELINE) {
+        sched_history[c][t] = pid;
+        if (c > max_seen_cpu_idx)  max_seen_cpu_idx = c;
+        if (t > max_seen_time_idx) max_seen_time_idx = t;
+    }
+    pthread_mutex_unlock(&gantt_tracking_lock);
+}
+
+void gantt_dump() {
+    if (!gantt_init_done) return;
+    printf("\n=== PROCESS SCHEDULING TIMELINE (GANTT CHART) ===\n\n");
+    for (int block = 0; block <= max_seen_time_idx; block += 20) {
+        int end = (block + 19 > max_seen_time_idx) ? max_seen_time_idx : block + 19;
+        printf("Time  : ");
+        for (int i = block; i <= end; i++) printf("%02d ", i);
+        printf("\n");
+        for (int c = 0; c <= max_seen_cpu_idx; c++) {
+            printf("CPU %d : ", c);
+            for (int i = block; i <= end; i++) {
+                int p = sched_history[c][i];
+                if (p == -1) printf("-- ");
+                else         printf("P%d ", p);
+            }
+            printf("\n");
+        }
+        printf("\n");
+    }
+    fflush(stdout);
+}
+
+/* ── Memory Region Classification ──────────────────────────────────── */
+static const char *get_vma_label(struct vm_rg_struct *rg) {
+    if (IS_KRNL_SPACE(rg->rg_start)) return (rg->vmaid == 0) ? "KERNEL DYNAMIC" : "KERNEL STATIC";
+    return (rg->vmaid == 0) ? "USER DYNAMIC" : "USER STATIC";
+}
+
+/* ── Verbose Helpers ────────────────────────────────────────────────── */
+void print_frame_list(const char *name, struct framephy_struct *head) {
     printf("%s: ", name);
     if (!head) { printf("(empty)\n"); return; }
-    for (; head; head = head->fp_next)
-        printf("[%lu] ", (unsigned long)head->fpn);
+    for (; head; head = head->fp_next) printf("[%lu] ", (unsigned long)head->fpn);
     printf("\n");
 }
 
-static const char *addr_region_name(addr_t addr)
-{
-  if (IS_USER_DYNAMIC_SPACE(addr))
-    return "USER_DYNAMIC";
-  if (IS_USER_STATIC_SPACE(addr))
-    return "USER_STATIC";
-  if (IS_CANONICAL_HOLE(addr))
-    return "CANONICAL_HOLE";
-  if (IS_KRNL_DYNAMIC_SPACE(addr))
-    return "KRNL_DYNAMIC";
-  if (IS_KRNL_STATIC_SPACE(addr))
-    return "KRNL_STATIC";
-  return "UNKNOWN";
-}
-
-static const char *rg_region_name(addr_t start, addr_t end)
-{
-    const char *region_start = addr_region_name(start);
-    const char *region_end = addr_region_name(end == 0 ? 0 : end - 1);
-
-    if (strcmp(region_start, region_end) == 0)
-        return region_start;
-    return "CROSS_REGION";
-}
-
-void print_storage_int(struct memphy_struct *m)
-{
+void print_storage_int(struct memphy_struct *m) {
     if (!m || !m->storage) { printf("storage is NULL\n"); return; }
-
     printf("STORAGE\n");
     int ints_per_page = PAGING64_PAGESZ / sizeof(int);
     int total_pages   = m->maxsz / PAGING64_PAGESZ;
-
     for (int pg = 0; pg < total_pages; pg++) {
         printf("[PAGE %d] : ", pg);
         for (int i = 0; i < 16; i++) {
@@ -64,8 +92,7 @@ void print_storage_int(struct memphy_struct *m)
     }
 }
 
-void print_memphy(const char *name, struct memphy_struct *m)
-{
+void print_memphy(const char *name, struct memphy_struct *m) {
     printf("%s | size:%lu\n", name, (unsigned long)m->maxsz);
     print_storage_int(m);
     print_frame_list("FREE frames", m->free_fp_list);
@@ -73,12 +100,9 @@ void print_memphy(const char *name, struct memphy_struct *m)
     printf("======================\n");
 }
 
-/* ── 5-level page-table walk for the kernel's own pgd ─────────────── */
-uint32_t pte_get_entry_kernel_print(struct krnl_t *os, addr_t pgn)
-{
+uint32_t pte_get_entry_kernel_print(struct krnl_t *os, addr_t pgn) {
     addr_t pgd_i, p4d_i, pud_i, pmd_i, pt_i;
     get_pd_from_pagenum(pgn, &pgd_i, &p4d_i, &pud_i, &pmd_i, &pt_i);
-
     if (!os->krnl_pgd || os->krnl_pgd[pgd_i] == 0) return 0;
     addr_t *p4d = (addr_t *)os->krnl_pgd[pgd_i];
     if (!p4d || p4d[p4d_i] == 0) return 0;
@@ -91,162 +115,65 @@ uint32_t pte_get_entry_kernel_print(struct krnl_t *os, addr_t pgn)
     return (uint32_t)pt[pt_i];
 }
 
-/* ── 5-level page-table walk for a user mm ────────────────────────── */
-static uint32_t pte_get_entry_print(struct mm_struct *mm, addr_t pgn)
-{
-    addr_t pgd_i = 0, p4d_i = 0, pud_i = 0, pmd_i = 0, pt_i = 0;
+static uint32_t walk_pt(struct mm_struct *mm, addr_t pgn) {
+    addr_t pgd_i, p4d_i, pud_i, pmd_i, pt_i;
     get_pd_from_pagenum(pgn, &pgd_i, &p4d_i, &pud_i, &pmd_i, &pt_i);
-
     if (!mm->pgd || mm->pgd[pgd_i] == 0) return 0;
-    addr_t *p4d = (addr_t *)mm->pgd[pgd_i];
-    if (!p4d || p4d[p4d_i] == 0) return 0;
-    addr_t *pud = (addr_t *)p4d[p4d_i];
-    if (!pud || pud[pud_i] == 0) return 0;
-    addr_t *pmd = (addr_t *)pud[pud_i];
-    if (!pmd || pmd[pmd_i] == 0) return 0;
-    addr_t *pt  = (addr_t *)pmd[pmd_i];
-    if (!pt) return 0;
-    return (uint32_t)pt[pt_i];
+    addr_t *v = mm->pgd;
+    if (!v[pgd_i]) return 0; v = (addr_t *)v[pgd_i];
+    if (!v[p4d_i]) return 0; v = (addr_t *)v[p4d_i];
+    if (!v[pud_i]) return 0; v = (addr_t *)v[pud_i];
+    if (!v[pmd_i]) return 0; v = (addr_t *)v[pmd_i];
+    return (uint32_t)v[pt_i];
 }
 
-/* ── Print PAGE TABLE entries for a given mm (6 entries) ─────────── */
-static void print_page_table(struct mm_struct *mm)
-{
-    printf("PAGE TABLE: ");
-    for (int i = 0; i < 6; i++) {
-        uint32_t pte = pte_get_entry_print(mm, i);
-        if      (PAGING_PAGE_PRESENT(pte))      printf("[page=%d -> frame=%u] ", i, PAGING_PTE_FPN(pte));
-        else if (pte & PAGING_PTE_SWAPPED_MASK) printf("[page=%d -> swap=%u] ",  i, PAGING_PTE_SWP(pte));
-        else                                    printf("[page=%d -> none] ",      i);
-    }
-    printf("\n");
-}
-
-/* ── Print VMA list for a given mm ───────────────────────────────── */
-static void print_vma_list(struct mm_struct *mm)
-{
-    if (!mm) { printf("  (mm=NULL)\n"); return; }
-
-    // libmem_mmvm_lock();
-    struct vm_area_struct *vma = mm->mmap;
-    if (!vma) printf("  (empty)\n");
-    for (; vma; vma = vma->vm_next) {
-        printf("VMA | id=%lu | start=%lu | end=%lu | sbrk=%lu | free regions: ",
-               vma->vm_id,
-               (unsigned long)vma->vm_start,
-               (unsigned long)vma->vm_end,
-               (unsigned long)vma->sbrk);
-        struct vm_rg_struct *rg = vma->vm_freerg_list;
-        if (!rg) printf("(empty)");
-        for (; rg; rg = rg->rg_next) {
-            printf("[%lu-%lu]", (unsigned long)rg->rg_start, (unsigned long)rg->rg_end);
-            if (rg->rg_next) printf(" -> ");
-        }
-        printf("\n");
-    }
-    // libmem_mmvm_unlock();
-}
-
-/* ── Print FIFO page list for a given mm ─────────────────────────── */
-static void print_fifo_list(struct mm_struct *mm)
-{
-    printf("FIFO PAGE LIST: ");
-    struct pgn_t *p = mm->fifo_pgn;
-    if (!p) printf("(empty)");
-    for (; p; p = p->pg_next) {
-        printf("[%lu]", (unsigned long)p->pgn);
-        if (p->pg_next) printf(" -> ");
-    }
-    printf("\n");
-}
-
-/* ── Print cache pools from a given mm ───────────────────────────── */
-static void print_cache_pools(struct mm_struct *mm)
-{
-    printf("KMEM CACHE POOLS:\n");
-    if (!mm || !mm->kcpooltbl) return;
-    for (int i = 0; i < 4; i++) {
-        struct kcache_pool_struct *pool = &mm->kcpooltbl[i];
-        if (pool->size != 0 || pool->align != 0 || pool->storage != 0)
-            printf("  pool[%d] size=%d align=%d storage=0x%lx\n",
-                   i, pool->size, pool->align, (unsigned long)pool->storage);
-    }
-}
-
-/* ── Merge user + kernel symrgtbls by index order ────────────────── */
-static void print_symtbl_merged(struct mm_struct *user_mm, struct mm_struct *krnl_mm)
-{
-    printf("SYMBOL TABLE: ");
-    int empty = 1;
+void print_mm_struct(struct mm_struct *mm) {
+    if (!mm) return;
+    printf("MM STRUCT\nVMA | id=%lu: ", (unsigned long)mm->mmap ? mm->mmap->vm_id : 0);
+    for (struct vm_area_struct *v = mm->mmap; v; v = v->vm_next)
+        printf("[%lx-%lx sbrk:%lx] ", (unsigned long)v->vm_start, (unsigned long)v->vm_end, (unsigned long)v->sbrk);
+    
+    printf("\nSYMBOL TABLE: ");
     for (int i = 0; i < PAGING_MAX_SYMTBL_SZ; i++) {
-        if (user_mm && (user_mm->symrgtbl[i].rg_start != 0 || user_mm->symrgtbl[i].rg_end != 0)) {
-            printf("[rg%d:0x%lx-0x%lx mode=%s region=%s] ", i,
-                   (unsigned long)user_mm->symrgtbl[i].rg_start,
-                   (unsigned long)user_mm->symrgtbl[i].rg_end,
-                   user_mm->symrgtbl[i].mode_bit ? "USER" : "KRNL",
-                   rg_region_name(user_mm->symrgtbl[i].rg_start, user_mm->symrgtbl[i].rg_end));
-            empty = 0;
-        }
-        if (krnl_mm && (krnl_mm->symrgtbl[i].rg_start != 0 || krnl_mm->symrgtbl[i].rg_end != 0)) {
-            printf("[rg%d:0x%lx-0x%lx mode=%s region=%s] ", i,
-                   (unsigned long)krnl_mm->symrgtbl[i].rg_start,
-                   (unsigned long)krnl_mm->symrgtbl[i].rg_end,
-                   krnl_mm->symrgtbl[i].mode_bit ? "USER" : "KRNL",
-                   rg_region_name(krnl_mm->symrgtbl[i].rg_start, krnl_mm->symrgtbl[i].rg_end));
-            empty = 0;
-        }
+        struct vm_rg_struct *rg = &mm->symrgtbl[i];
+        if (rg->rg_start || rg->rg_end)
+            printf("[rg%d:0x%lx-0x%lx (%s)] ", i, (unsigned long)rg->rg_start, (unsigned long)rg->rg_end, get_vma_label(rg));
     }
-    if (empty) printf("(empty)");
-    printf("\n");
-}
-
-/* ══════════════════════════════════════════════════════════════════════
- *  print_mm_struct  –  standalone MM snapshot (single symrgtbl)
- * ══════════════════════════════════════════════════════════════════════ */
-void print_mm_struct(struct mm_struct *mm)
-{
-    printf("MM STRUCT\n");
-    if (!mm) { printf("mm = NULL\n"); return; }
-
-    print_page_table(mm);
-    print_vma_list(mm);
-    print_symtbl_merged(mm, NULL);   /* single-mm: pass NULL for krnl */
-    print_fifo_list(mm);
-    print_cache_pools(mm);
+    printf("\nFIFO PAGE LIST: ");
+    for (struct pgn_t *p = mm->fifo_pgn; p; p = p->pg_next) printf("[%lu] ", (unsigned long)p->pgn);
     printf("\n================================ END ================================\n\n");
 }
 
-/* ══════════════════════════════════════════════════════════════════════
- *  print_kernel_info  –  full system snapshot:
- *    RAM + swap → kernel page table → MM STRUCT (merged symbol table)
- * ══════════════════════════════════════════════════════════════════════ */
-void print_kernel_info(struct krnl_t *os)
-{
-    /* hardware state */
+void print_kernel_info(struct krnl_t *os) {
+    if (!os) return;
+    if (os->current) log_scheduling(os->current->pid);
+
     print_memphy("RAM", os->mram);
     print_memphy("ACTIVE SWAP", os->active_mswp);
 
-    /* kernel page-table window */
-    printf("PAGE TABLE KERNEL: ");
-    const addr_t KBASE_PGN = KRNL_DYNAMIC_START / PAGING64_PAGESZ;
-    for (int i = 0; i < 4; i++) {
-        uint32_t pte = pte_get_entry_kernel_print(os, KBASE_PGN + i);
-        if      (PAGING_PAGE_PRESENT(pte))      printf("[page=%lx -> frame=%u] ", KBASE_PGN + i, PAGING_PTE_FPN(pte));
-        else if (pte & PAGING_PTE_SWAPPED_MASK) printf("[page=%lx -> swap=%u] ",  KBASE_PGN + i, PAGING_PTE_SWP(pte));
-        else                                    printf("[page=%lx -> none] ",      KBASE_PGN + i);
-    }
-    printf("\n======================\n");
-
-    /* MM STRUCT – user mm for page table/VMA/FIFO, kernel mm for caches */
-    struct mm_struct *user_mm  = (os->current && os->current->mm) ? os->current->mm : NULL;
-    struct mm_struct *krnl_mm  = os->mm;
-    struct mm_struct *pgtbl_mm = user_mm ? user_mm : krnl_mm;
-
-    printf("MM STRUCT\n");
-    print_page_table(pgtbl_mm);
-    print_vma_list(pgtbl_mm);
-    print_symtbl_merged(user_mm, krnl_mm);
-    print_fifo_list(pgtbl_mm);
-    print_cache_pools(krnl_mm);
-    printf("\n================================ END ================================\n\n");
+    struct mm_struct *user_mm = (os->current && os->current->mm) ? os->current->mm : NULL;
+    if (user_mm) print_mm_struct(user_mm);
+    else         print_mm_struct(os->mm);
 }
+
+static pthread_mutex_t sync_log_lock = PTHREAD_MUTEX_INITIALIZER;
+void sync_log_printf(const char *fmt, ...) {
+    if (!fmt) return;
+    va_list args, args_copy;
+    va_start(args, fmt);
+    va_copy(args_copy, args);
+    int needed = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+    if (needed < 0) { va_end(args_copy); return; }
+    char *msg = malloc(needed + 2);
+    if (!msg) { va_end(args_copy); return; }
+    vsnprintf(msg, needed + 1, fmt, args_copy);
+    va_end(args_copy);
+    if (needed == 0 || msg[needed - 1] != '\n') { msg[needed] = '\n'; msg[needed + 1] = '\0'; }
+    pthread_mutex_lock(&sync_log_lock);
+    fputs(msg, stdout); fflush(stdout);
+    pthread_mutex_unlock(&sync_log_lock);
+    free(msg);
+}
+
+void pg_dump(struct pcb_t *p, addr_t s, addr_t e) { (void)p; (void)s; (void)e; }

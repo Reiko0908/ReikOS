@@ -3,7 +3,7 @@
 #include "sched.h"
 #include "loader.h"
 #include "mm.h"
-#include "print_debug.h"
+#include "memlog.h"
 #ifdef MM64
 #include "mm64.h"
 #endif
