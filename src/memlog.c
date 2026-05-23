@@ -133,12 +133,6 @@ void print_mm_struct(struct mm_struct *mm) {
     for (struct vm_area_struct *v = mm->mmap; v; v = v->vm_next)
         printf("[%lx-%lx sbrk:%lx] ", (unsigned long)v->vm_start, (unsigned long)v->vm_end, (unsigned long)v->sbrk);
     
-    printf("\nSYMBOL TABLE: ");
-    for (int i = 0; i < PAGING_MAX_SYMTBL_SZ; i++) {
-        struct vm_rg_struct *rg = &mm->symrgtbl[i];
-        if (rg->rg_start || rg->rg_end)
-            printf("[rg%d:0x%lx-0x%lx (%s)] ", i, (unsigned long)rg->rg_start, (unsigned long)rg->rg_end, get_vma_label(rg));
-    }
     printf("\nFIFO PAGE LIST: ");
     for (struct pgn_t *p = mm->fifo_pgn; p; p = p->pg_next) printf("[%lu] ", (unsigned long)p->pgn);
     printf("\n================================ END ================================\n\n");
