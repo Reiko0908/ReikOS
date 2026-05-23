@@ -3,6 +3,7 @@
 #include "sched.h"
 #include "loader.h"
 #include "mm.h"
+#include "print_debug.h"
 #ifdef MM64
 #include "mm64.h"
 #endif
@@ -355,5 +356,9 @@ int main(int argc, char * argv[]) {
 
 	/* Stop timer */
 	stop_timer();
+
+    /* Display the process scheduling history */
+    gantt_dump();
+
 	return 0;
 }
