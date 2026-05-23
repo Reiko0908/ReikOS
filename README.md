@@ -58,7 +58,7 @@ make
 
 ```
 
-The config file is looked up under `input/`. Example: `./os os_1_mlq_paging`
+The config file is looked up under `input/`.
 
 ---
 
@@ -106,12 +106,12 @@ These cases test the MLQ algorithm across different CPU counts and queue configu
 
 ```bash
 # Single CPU Scheduling
-./os sched > test/sched.txt
 ./os sched_0 > test/sched_0.txt
 ./os sched_1 > test/sched_1.txt
 ./os sched_1q > test/sched_1q.txt
 
 # Multi-core Scheduling
+./os sched > test/sched.txt
 ./os sched_2cpu_1q > test/sched_2cpu_1q.txt
 ./os sched_5cpu_1q > test/sched_5cpu_1q.txt
 
@@ -130,34 +130,6 @@ Use the `gantt` utility to parse the generated log files into a visual timeline:
 ./gantt test/sched_5cpu_1q.txt
 
 ```
-
----
-
-## Memory Model
-
-### Virtual Address Layout (22-bit)
-
-```
-[ Page Number (14 bits) | Page Offset (8 bits) ]
-
-```
-
-Page size: **256 bytes** | Max virtual pages: **16,384**
-
-### 64-bit Mode (MM64)
-
-Five-level page table: **PGD → P4D → PUD → PMD → PT**, matching the Linux x86-64 kernel structure.
-
----
-
-## Build-time Flags (`include/os-cfg.h`)
-
-| Flag | Description |
-| --- | --- |
-| `MLQ_SCHED` | Enable Multi-Level Queue scheduler |
-| `MM_PAGING` | Enable paged memory management |
-| `MM64` | Use 64-bit 5-level page table mode |
-| `PAGETBL_DUMP` | Dump page table state to stdout |
 
 ---
 
