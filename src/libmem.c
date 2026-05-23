@@ -560,12 +560,26 @@ addr_t __kmalloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t 
     return -1;
   }
 
-  addr_t mapped_start = cur_vma->sbrk - (addr_t)PAGING64_PAGE_ALIGNSZ(size);
+  addr_t mapped_start = cur_vma->vm_end - (addr_t)PAGING64_PAGE_ALIGNSZ(size);
   krnl_mm->symrgtbl[rgid].rg_start = mapped_start;
   krnl_mm->symrgtbl[rgid].rg_end   = mapped_start + size;
   krnl_mm->symrgtbl[rgid].mode_bit = 0;
   krnl_mm->symrgtbl[rgid].vmaid    = cur_vma->vm_id;
   *alloc_addr = mapped_start;
+  cur_vma->sbrk = mapped_start + size;
+
+  /* Fragmentation recovery: return leftover tail to kernel free list */
+  if (mapped_start + size < cur_vma->vm_end) {
+    struct vm_rg_struct *free_tail = malloc(sizeof(struct vm_rg_struct));
+    if (free_tail) {
+      free_tail->rg_start = mapped_start + size;
+      free_tail->rg_end   = cur_vma->vm_end;
+      free_tail->mode_bit = 0;
+      free_tail->vmaid    = cur_vma->vm_id;
+      free_tail->rg_next  = NULL;
+      enlist_vm_freerg_list(krnl_mm, free_tail);
+    }
+  }
 
   refresh_vma_sentinel(cur_vma);
   pthread_mutex_unlock(&mmvm_lock);
