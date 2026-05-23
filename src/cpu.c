@@ -127,7 +127,6 @@ int run(struct pcb_t *proc)
 		stat = 1;
 	}
 #ifdef MEMLOG
-	printf("\n======================================== KERNEL INFO ========================================\n");
 	const char *opcode_str[] = {
 		"CALC",
 		"ALLOC",
