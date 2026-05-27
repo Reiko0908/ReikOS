@@ -279,7 +279,7 @@ int MEMPHY_get_contiguous_freefp(struct memphy_struct *mp, int req_pgnum,
   int count = 1 << order;
   for (int i = 0; i < count; i++) {
     fp_list_remove(&mp->free_fp_list, (addr_t)(fpn + i));
-    fp_list_push(&mp->used_fp_list, (addr_t)(fpn + i), 0);
+    fp_list_push(&mp->used_fp_list, (addr_t)(fpn + i), (i == 0) ? order : 0);
   }
   *retfpn = (addr_t)fpn;
   return 0;

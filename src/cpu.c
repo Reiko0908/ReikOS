@@ -126,7 +126,7 @@ int run(struct pcb_t *proc)
 	default:
 		stat = 1;
 	}
-#ifdef MEMLOG
+#if MEMLOG
 	const char *opcode_str[] = {
 		"CALC",
 		"ALLOC",
