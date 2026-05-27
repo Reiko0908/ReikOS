@@ -1,7 +1,9 @@
 #ifndef SCHED_H
 #define SCHED_H
 
-#include "common.h"
+#include <stdint.h>
+
+struct pcb_t;
 
 #ifndef MLQ_SCHED
 #define MLQ_SCHED

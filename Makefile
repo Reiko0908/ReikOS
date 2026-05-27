@@ -7,8 +7,8 @@ INCLUDE = include
 
 CC = gcc
 DEBUG = -g
-CFLAGS = -Wall -c $(DEBUG)
-LFLAGS = -Wall $(DEBUG)
+CFLAGS = -Wall -c $(DEBUG) -pthread
+LFLAGS = -Wall $(DEBUG) -pthread
 
 vpath %.c $(SRC)
 vpath %.h $(INCLUDE)
