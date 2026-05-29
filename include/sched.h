@@ -31,6 +31,9 @@ void add_proc(struct pcb_t * proc);
 /* Find a process while holding the scheduler queue lock */
 struct pcb_t * find_proc_by_pid(uint32_t pid);
 
+/* Remove a process from scheduler bookkeeping (called before freeing PCB) */
+void sched_remove_proc(uint32_t pid);
+
 #endif
 
 
