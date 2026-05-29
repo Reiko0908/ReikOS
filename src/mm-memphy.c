@@ -17,8 +17,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../include/mm.h"
-#include "../include/mm64.h"
+#include "mm.h"
+#include "mm64.h"
 
 /* =======================================================================
  * Internal helpers for free_fp_list / used_fp_list
