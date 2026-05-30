@@ -1,6 +1,6 @@
+#include "sched.h"
 #include "cpu.h"
 #include "timer.h"
-#include "sched.h"
 #include "loader.h"
 #include "mm.h"
 #include "memlog.h"
@@ -112,6 +112,7 @@ static void * cpu_routine(void * args) {
 			/* The porcess has finish it job */
 			sync_printf("\tCPU %d: Processed %2d has finished\n",
 				id ,proc->pid);
+			sched_remove_proc(proc->pid);
 			free(proc);
 			proc = get_proc();
 			time_left = 0;
@@ -212,8 +213,13 @@ static void * ld_routine(void * args) {
 		krnl->mswp = mswp;
 		krnl->active_mswp = active_mswp;
 #endif
+#ifdef MLQ_SCHED
 		sync_printf("\tLoaded a process at %s, PID: %d PRIO: %ld\n",
 			ld_processes.path[i], proc->pid, ld_processes.prio[i]);
+#else
+		sync_printf("\tLoaded a process at %s, PID: %d\n",
+			ld_processes.path[i], proc->pid);
+#endif
 		add_proc(proc);
 		free(ld_processes.path[i]);
 		i++;

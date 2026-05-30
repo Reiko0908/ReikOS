@@ -32,7 +32,7 @@ int __sys_memmap(struct krnl_t *krnl, uint32_t pid, struct sc_regs* regs)
    if (!krnl || !regs) return -1;
 
    caller= find_proc_by_pid(pid);
-   
+
    if (caller == NULL) {
       printf("[ERROR] cannot resolve pid %u in kernel process lists\n", pid);
       return -1;
@@ -46,7 +46,7 @@ int __sys_memmap(struct krnl_t *krnl, uint32_t pid, struct sc_regs* regs)
    /* TODO: Traverse proclist to terminate the proc
     *       stcmp to check the process match proc_name
     */
-	
+
    switch (memop) {
    case SYSMEM_MAP_OP:
             /* Reserved process case*/
@@ -69,8 +69,6 @@ int __sys_memmap(struct krnl_t *krnl, uint32_t pid, struct sc_regs* regs)
             printf("Memop code: %d\n", memop);
             break;
    }
-   
+
    return 0;
 }
-
-
