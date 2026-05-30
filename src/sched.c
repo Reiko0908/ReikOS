@@ -21,7 +21,11 @@ static pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
 /* Simple pid -> proc hash table to avoid linear scans */
 #define SCHED_HT_BITS 10
 #define SCHED_HT_SIZE (1 << SCHED_HT_BITS)
-struct ht_node { uint32_t pid; struct pcb_t *p; struct ht_node *next; };
+struct ht_node {
+    uint32_t pid;
+    struct pcb_t *p;
+    struct ht_node *next;
+};
 static struct ht_node *sched_ht[SCHED_HT_SIZE];
 static inline uint32_t sched_ht_idx(uint32_t pid) { return pid & (SCHED_HT_SIZE - 1); }
 static struct pcb_t *ht_lookup_locked(uint32_t pid) {
@@ -96,7 +100,7 @@ void init_scheduler(void) {
 
 	for (i = 0; i < MAX_PRIO; i ++) {
 		mlq_ready_queue[i].size = 0;
-		slot[i] = MAX_PRIO - i; 
+		slot[i] = MAX_PRIO - i;
 	}
 #endif
 	ready_queue.size = 0;
@@ -120,7 +124,7 @@ struct pcb_t * find_proc_by_pid(uint32_t pid) {
 }
 
 #ifdef MLQ_SCHED
-/* 
+/*
  *  Stateful design for routine calling
  *  based on the priority and our MLQ policy
  *  We implement stateful here using transition technique
@@ -172,7 +176,7 @@ struct pcb_t * get_mlq_proc(void) {
   if (proc != NULL)
     enqueue(&running_list, proc);
   pthread_mutex_unlock(&queue_lock);
-  return proc;	
+  return proc;
 }
 
 void put_mlq_proc(struct pcb_t * proc) {
@@ -180,7 +184,7 @@ void put_mlq_proc(struct pcb_t * proc) {
 	proc->krnl->mlq_ready_queue = mlq_ready_queue;
 	proc->krnl->running_list = &running_list;
 
-	/* TODO: put running proc to running_list 
+	/* TODO: put running proc to running_list
 	 *       It worth to protect by a mechanism.
 	 */
 
@@ -200,12 +204,12 @@ void add_mlq_proc(struct pcb_t * proc) {
 	/* TODO: put running proc to running_list
 	 *       It worth to protect by a mechanism.
 	 */
-       
+
 	pthread_mutex_lock(&queue_lock);
 	enqueue(&mlq_ready_queue[proc->prio], proc);
 	/* Track process by pid for fast lookup */
 	ht_insert_locked(proc->pid, proc);
-	pthread_mutex_unlock(&queue_lock);	
+	pthread_mutex_unlock(&queue_lock);
 }
 
 struct pcb_t * get_proc(void) {
@@ -242,7 +246,7 @@ void put_proc(struct pcb_t * proc) {
 	proc->krnl->ready_queue = &ready_queue;
 	proc->krnl->running_list = &running_list;
 
-	/* TODO: put running proc to running_list 
+	/* TODO: put running proc to running_list
 	 *       It worth to protect by a mechanism.
 	 */
 
@@ -256,7 +260,7 @@ void add_proc(struct pcb_t * proc) {
 	proc->krnl->ready_queue = &ready_queue;
 	proc->krnl->running_list = &running_list;
 
-	/* TODO: put running proc to running_list 
+	/* TODO: put running proc to running_list
 	 *       It worth to protect by a mechanism.
 	 */
 
@@ -264,7 +268,7 @@ void add_proc(struct pcb_t * proc) {
 	enqueue(&ready_queue, proc);
 	/* Track process by pid for fast lookup */
 	ht_insert_locked(proc->pid, proc);
-	pthread_mutex_unlock(&queue_lock);	
+	pthread_mutex_unlock(&queue_lock);
 }
 #endif
 
