@@ -14,12 +14,8 @@
 #include "queue.h"
 #include "sched.h"
 #include <stdlib.h>
-
-#ifdef MM64
 #include "mm64.h"
-#else
 #include "mm.h"
-#endif
 
 //typedef char BYTE;
 

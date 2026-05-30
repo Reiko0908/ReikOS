@@ -4,9 +4,7 @@
 #include "loader.h"
 #include "mm.h"
 #include "memlog.h"
-#ifdef MM64
 #include "mm64.h"
-#endif
 
 #include <pthread.h>
 #include <stdio.h>

@@ -19,10 +19,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <pthread.h>
-
-#if defined (MM64)
-	#include "mm64.h"
-#endif
+#include "mm64.h"
 
 /*get_vma_by_num - get vm area by numID
  *@mm: memory region
@@ -109,20 +106,12 @@ int krnl_validate_overlap_vm_area(struct krnl_t *krnl, int vmaid, addr_t vmastar
  *
  */
 int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz) {
-  if (!caller)
-    return -1;
-  addr_t inc_amt;
-  int inc_pgn;
-#ifdef MM64
-  inc_amt = PAGING64_PAGE_ALIGNSZ(inc_sz);
-  inc_pgn = (int)(inc_amt >> PAGING64_ADDR_PT_SHIFT);
-#else
-  inc_amt = PAGING_PAGE_ALIGNSZ(inc_sz);
-  inc_pgn = (int)(inc_amt >> PAGING_ADDR_PT_SHIFT);
-#endif
+  if (!caller) return -1;
+  addr_t inc_amt = PAGING64_PAGE_ALIGNSZ(inc_sz);
+  int inc_pgn = (int)(inc_amt >> PAGING64_ADDR_PT_SHIFT);
+
   struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
   if (!cur_vma) return -1;
-
   addr_t old_end = cur_vma->vm_end;
   cur_vma->vm_end = old_end + inc_amt;
 
@@ -131,27 +120,18 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz) {
     cur_vma->vm_end = old_end;
     return -1;
   }
-
   cur_vma->sbrk = cur_vma->vm_end;
   return 0;
 }
 
 int krnl_inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz) {
-  if (!caller->krnl)
-    return -1;
-  addr_t inc_amt;
-  int inc_pgn;
-#ifdef MM64
-  inc_amt = PAGING64_PAGE_ALIGNSZ(inc_sz);
-  inc_pgn = (int)(inc_amt >> PAGING64_ADDR_PT_SHIFT);
-#else
-  inc_amt = PAGING_PAGE_ALIGNSZ(inc_sz);
-  inc_pgn = (int)(inc_amt >> PAGING_ADDR_PT_SHIFT);
-#endif
+  if (!caller->krnl) return -1;
+  addr_t inc_amt = PAGING64_PAGE_ALIGNSZ(inc_sz);
+  int inc_pgn = (int)(inc_amt >> PAGING64_ADDR_PT_SHIFT);
+
   struct vm_area_struct *cur_vma = get_vma_by_num(caller->krnl->mm, vmaid);
   if (!cur_vma) return -1;
   addr_t old_end = cur_vma->vm_end;
-
   cur_vma->vm_end = old_end + inc_amt;
 
   struct vm_rg_struct newrg;
@@ -170,14 +150,9 @@ int krnl_inc_vma_limit(struct pcb_t *caller, int vmaid, addr_t inc_sz) {
 addr_t vm_map_range(struct pcb_t *caller, addr_t astart, addr_t aend,
                     addr_t mapstart, int incpgnum, struct vm_rg_struct *ret_rg)
 {
-  addr_t mapsz;
   if (!caller || !caller->krnl || !ret_rg) return -1;
   if (incpgnum <= 0 || astart >= aend) return -1;
-#if defined (MM64)
-	mapsz = (addr_t)incpgnum * PAGING64_PAGESZ;
-#else
-	mapsz = (addr_t)incpgnum * PAGING_PAGESZ;
-#endif
+  addr_t mapsz = (addr_t)incpgnum * PAGING64_PAGESZ;
   if (mapstart < astart || mapstart + mapsz > aend) return -1;
   return vm_map_ram(caller, astart, aend, mapstart, incpgnum, ret_rg);
 }
@@ -188,14 +163,9 @@ addr_t vm_map_range(struct pcb_t *caller, addr_t astart, addr_t aend,
 addr_t vm_map_kernel(struct pcb_t *caller, addr_t astart, addr_t aend,
                     addr_t mapstart, int incpgnum, struct vm_rg_struct *ret_rg)
 {
-  addr_t mapsz;
   if (!caller || !caller->krnl || !ret_rg) return -1;
   if (incpgnum <= 0 || astart >= aend) return -1;
-#if defined (MM64)
-	mapsz = (addr_t)incpgnum * PAGING64_PAGESZ;
-#else
-	mapsz = (addr_t)incpgnum * PAGING_PAGESZ;
-#endif
+  addr_t mapsz = (addr_t)incpgnum * PAGING64_PAGESZ;
   if (mapstart < astart || mapstart + mapsz > aend) return -1;
   return krnl_vm_map_ram(caller, astart, aend, mapstart, incpgnum, ret_rg);
 }

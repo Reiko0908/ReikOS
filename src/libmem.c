@@ -95,8 +95,7 @@ struct vm_rg_struct *get_symrg_byid(struct mm_struct *mm, int rgid) {
 
 static void refresh_vma_sentinel(struct vm_area_struct *vma)
 {
-  if (!vma || vma->sbrk != vma->vm_end)
-    return;
+  if (!vma || vma->sbrk != vma->vm_end) return;
 
   /* Purge stale sentinels (zero-length nodes at the wrong address) */
   struct vm_rg_struct **sp = &vma->vm_freerg_list;
@@ -149,7 +148,6 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
     return -1;
   }
 
-  /* TODO get_free_vmrg_area FAILED handle the region management (Fig.6)*/
   struct vm_rg_struct rgnode;
   rgnode.mode_bit = 1;
   if (get_free_vmrg_area(caller, vmaid, size, &rgnode) == 0) {
@@ -176,12 +174,8 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t *allo
 
   addr_t old_vm_end = cur_vma->vm_end;
   addr_t old_sbrk = cur_vma->sbrk;
-  int inc_sz = 0;
-#ifdef MM64
-  inc_sz = PAGING64_PAGE_ALIGNSZ(size);
-#else
-  inc_sz = PAGING_PAGE_ALIGNSZ(size);
-#endif
+  int inc_sz = PAGING64_PAGE_ALIGNSZ(size);
+
   libsyscall(caller, 17, SYSMEM_INC_OP, vmaid, inc_sz);
   if (cur_vma->sbrk == old_sbrk) {
     pthread_mutex_unlock(&mmvm_lock);
@@ -377,7 +371,6 @@ int pg_setval(struct mm_struct *mm, addr_t addr, BYTE value, struct pcb_t *calle
   if (pg_getpage(mm, pgn, &fpn, caller) != 0) return -1;
   addr_t phyaddr = ((addr_t)fpn << PAGING64_ADDR_FPN_SHIFT) + off;
 
-
   struct sc_regs regs;
   regs.a1 = SYSMEM_IO_WRITE;
   regs.a2 = phyaddr;
@@ -386,6 +379,7 @@ int pg_setval(struct mm_struct *mm, addr_t addr, BYTE value, struct pcb_t *calle
   _syscall(caller->krnl, caller->pid, 17, &regs);
   return 0;
 }
+
 /*
  * krnl_pg_setval - write value to given offset - kernel memory access
  */
@@ -549,12 +543,8 @@ addr_t __kmalloc(struct pcb_t *caller, int vmaid, int rgid, addr_t size, addr_t 
     return -1;
   }
 
-  int inc_sz;
-#ifdef MM64
-  inc_sz = PAGING64_PAGE_ALIGNSZ(size);
-#else
-  inc_sz = PAGING_PAGE_ALIGNSZ(size);
-#endif
+  int inc_sz = PAGING64_PAGE_ALIGNSZ(size);
+
   if (krnl_inc_vma_limit(caller, vmaid, inc_sz) != 0) {
     pthread_mutex_unlock(&mmvm_lock);
     return -1;
