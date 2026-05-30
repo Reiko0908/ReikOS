@@ -36,6 +36,33 @@
 
 typedef ARG_TYPE arg_t;
 
+/* Blob persisted in kernel static region (logical) */
+struct krnl_const_blob {
+  uint64_t address_size;
+  uint64_t offset_len;
+  uint64_t first_lv_len;
+  uint64_t second_lv_len;
+  uint64_t segment_len;
+  uint64_t page_len;
+  uint64_t num_pages;
+  uint64_t page_size;
+  addr_t krnl_static_start;
+  addr_t krnl_static_end;
+};
+
+/* Blob persisted in user static region (logical) */
+struct user_input_blob {
+  uint64_t time_slot;
+  uint64_t num_cpus;
+  uint64_t num_processes;
+  uint64_t process_start_time;
+  uint64_t process_prio;
+  uint64_t memram_size;
+  uint64_t memswap_size[PAGING_MAX_MMSWP];
+  addr_t user_static_start;
+  addr_t user_static_end;
+};
+
 /*
  * @bksysnet: the format string need to be redefined
  *            based on the address mode
@@ -123,6 +150,9 @@ struct krnl_t {
   struct queue_t *ready_queue;
   struct queue_t *running_list;
   struct pcb_t *current;
+  addr_t krnl_static_addr;
+  addr_t krnl_static_size;
+  struct krnl_const_blob *krnl_static_blob;
 #ifdef MLQ_SCHED
   struct queue_t *mlq_ready_queue;
 #endif
