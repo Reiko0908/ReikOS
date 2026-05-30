@@ -265,7 +265,7 @@ static void * ld_routine(void * args) {
 			ld_next_slot(timer_id);
 		}
 #ifdef MM_PAGING
-		proc->mm = malloc(sizeof(struct mm_struct));
+		proc->mm = calloc(1, sizeof(struct mm_struct));
 		init_mm(proc->mm, proc);
 		init_user_static_region(proc, i);
 		krnl->mram = mram;
