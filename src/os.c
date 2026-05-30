@@ -19,6 +19,35 @@ static int num_cpus;
 static int done = 0;
 static struct krnl_t os;
 
+#ifdef MM_PAGING
+static unsigned long memramsz;
+static unsigned long memswpsz[PAGING_MAX_MMSWP];
+
+struct mmpaging_ld_args {
+	/* A dispatched argument struct to compact many-fields passing to loader */
+	int vmemsz;
+	struct memphy_struct *mram;
+	struct memphy_struct **mswp;
+	struct memphy_struct *active_mswp;
+	int active_mswp_id;
+	struct timer_id_t  *timer_id;
+};
+#endif
+
+static struct ld_args{
+	char ** path;
+	unsigned long * start_time;
+#ifdef MLQ_SCHED
+	unsigned long * prio;
+#endif
+} ld_processes;
+int num_processes;
+
+struct cpu_args {
+	struct timer_id_t * timer_id;
+	int id;
+};
+
 static void init_kernel_static_region(void) {
 #ifndef MM64
 	return;
@@ -97,35 +126,6 @@ static void init_user_static_region(struct pcb_t *proc, int proc_idx) {
 	proc->mm->symrgtbl[PAGING_MAX_SYMTBL_SZ - 1].vmaid = 0;
 #endif
 }
-
-#ifdef MM_PAGING
-static unsigned long memramsz;
-static unsigned long memswpsz[PAGING_MAX_MMSWP];
-
-struct mmpaging_ld_args {
-	/* A dispatched argument struct to compact many-fields passing to loader */
-	int vmemsz;
-	struct memphy_struct *mram;
-	struct memphy_struct **mswp;
-	struct memphy_struct *active_mswp;
-	int active_mswp_id;
-	struct timer_id_t  *timer_id;
-};
-#endif
-
-static struct ld_args{
-	char ** path;
-	unsigned long * start_time;
-#ifdef MLQ_SCHED
-	unsigned long * prio;
-#endif
-} ld_processes;
-int num_processes;
-
-struct cpu_args {
-	struct timer_id_t * timer_id;
-	int id;
-};
 
 static pthread_mutex_t sync_log_lock = PTHREAD_MUTEX_INITIALIZER;
 
