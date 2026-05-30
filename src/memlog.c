@@ -149,6 +149,35 @@ static void print_vma_table(const char* label, struct mm_struct *mm) {
     }
 }
 
+/* Print kernel cache (slab) pools */
+static void print_cache_pool(struct mm_struct *mm) {
+    if (!mm || !mm->kcpooltbl) return;
+    printf("\n● KERNEL CACHE POOLS\n");
+    for (int i = 0; i < MAX_CACHE_POOL; i++) {
+        struct kcache_pool_struct *p = &mm->kcpooltbl[i];
+        if (p->size <= 0) continue;
+        printf("  Pool %02d: size=%d align=%d storage:", i, p->size, p->align);
+        if (p->storage == (addr_t)-1) printf(" EMPTY");
+        else printf(" 0x%08lx", (unsigned long)p->storage);
+        /* count slabs */
+        int sc = 0;
+        for (struct slab_struct *s = p->slabs; s; s = s->next) sc++;
+        printf("  slabs=%d\n", sc);
+
+        for (struct slab_struct *s = p->slabs; s; s = s->next) {
+            printf("    Slab addr: 0x%08lx  storage_idx:%ld", (unsigned long)s->addr, (long)s->storage);
+            if (s->free_list) {
+                printf("  free: ");
+                for (int j = 0; j < 8; j++) {
+                    printf("0x%08lx", (unsigned long)s->free_list[j].addr);
+                    if (j < 7) printf(", ");
+                }
+            }
+            printf("\n");
+        }
+    }
+}
+
 /* ── print_kernel_info lock ─────────────────────────────────────────── */
 static pthread_mutex_t print_kernel_info_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -199,6 +228,8 @@ void print_kernel_info(struct krnl_t *os) {
     if (k_mm) {
         printf("\n");
         print_vma_table("Kernel", k_mm);
+        /* Print kernel cache pools if present */
+        print_cache_pool(k_mm);
     }
 
     printf("\n● KERNEL PAGING MAP\n");
