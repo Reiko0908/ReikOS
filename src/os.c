@@ -1,6 +1,6 @@
+#include "sched.h"
 #include "cpu.h"
 #include "timer.h"
-#include "sched.h"
 #include "loader.h"
 #include "mm.h"
 #include "memlog.h"
@@ -213,8 +213,13 @@ static void * ld_routine(void * args) {
 		krnl->mswp = mswp;
 		krnl->active_mswp = active_mswp;
 #endif
-		sync_printf("\tLoaded a process at %s, PID: %d PRIO: %ld\n",
-			ld_processes.path[i], proc->pid, ld_processes.prio[i]);
+#ifdef MLQ_SCHED
+sync_printf("\tLoaded a process at %s, PID: %d PRIO: %ld\n",
+    ld_processes.path[i], proc->pid, ld_processes.prio[i]);
+#else
+sync_printf("\tLoaded a process at %s, PID: %d\n",
+    ld_processes.path[i], proc->pid);
+#endif
 		add_proc(proc);
 		free(ld_processes.path[i]);
 		i++;
