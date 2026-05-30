@@ -75,23 +75,19 @@ static addr_t *get_pte(struct mm_struct *mm, addr_t pgn) {
   get_pd_from_pagenum(pgn, &pgd_idx, &p4d_idx, &pud_idx, &pmd_idx, &pt_idx);
 
   addr_t *pgd_root = mm->pgd;
-  if (pgd_root[pgd_idx] == 0)
-    return NULL;
+  if (pgd_root[pgd_idx] == 0) return NULL;
   addr_t *p4d_tbl = (addr_t *)pgd_root[pgd_idx];
   mm->p4d = p4d_tbl;
 
-  if (p4d_tbl[p4d_idx] == 0)
-    return NULL;
+  if (p4d_tbl[p4d_idx] == 0) return NULL;
   addr_t *pud_tbl = (addr_t *)p4d_tbl[p4d_idx];
   mm->pud = pud_tbl;
 
-  if (pud_tbl[pud_idx] == 0)
-    return NULL;
+  if (pud_tbl[pud_idx] == 0) return NULL;
   addr_t *pmd_tbl = (addr_t *)pud_tbl[pud_idx];
   mm->pmd = pmd_tbl;
 
-  if (pmd_tbl[pmd_idx] == 0)
-    return NULL;
+  if (pmd_tbl[pmd_idx] == 0) return NULL;
   addr_t *pt_tbl = (addr_t *)pmd_tbl[pmd_idx];
   mm->pt = pt_tbl;
 
