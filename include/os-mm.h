@@ -31,6 +31,8 @@ typedef char BYTE;
 typedef ADDR_TYPE addr_t;
 //typedef unsigned int uint32_t;
 
+struct user_input_blob;
+
 /*
  * @bksysnet: the format string need to be redefined
  *            based on the address mode
@@ -138,6 +140,11 @@ struct mm_struct {
 
   /* kmem cache pool */
   struct kcache_pool_struct *kcpooltbl;
+
+   /* user-static storage metadata */
+   addr_t user_static_addr;
+   addr_t user_static_size;
+   struct user_input_blob *user_static_blob;
 };
 
 /*

@@ -48,6 +48,63 @@ struct cpu_args {
 	int id;
 };
 
+static void init_krnl_static_region(void) {
+	if (os.krnl_static_blob != NULL) {
+		return;
+	}
+
+	os.krnl_static_addr = KRNL_STATIC_START;
+	os.krnl_static_size = sizeof(struct krnl_const_blob);
+	os.krnl_static_blob = (struct krnl_const_blob *)calloc(1, os.krnl_static_size);
+	if (os.krnl_static_blob == NULL) {
+		return;
+	}
+
+	os.krnl_static_blob->address_size = ADDRESS_SIZE;
+	os.krnl_static_blob->offset_len = OFFSET_LEN;
+	os.krnl_static_blob->first_lv_len = FIRST_LV_LEN;
+	os.krnl_static_blob->second_lv_len = SECOND_LV_LEN;
+	os.krnl_static_blob->segment_len = SEGMENT_LEN;
+	os.krnl_static_blob->page_len = PAGE_LEN;
+	os.krnl_static_blob->num_pages = NUM_PAGES;
+	os.krnl_static_blob->page_size = PAGE_SIZE;
+	os.krnl_static_blob->krnl_static_start = KRNL_STATIC_START;
+	os.krnl_static_blob->krnl_static_end = KRNL_STATIC_END;
+}
+
+static void init_user_static_region(struct pcb_t *proc, int proc_idx) {
+	if (proc == NULL || proc->mm == NULL || proc->mm->user_static_blob != NULL) {
+		return;
+	}
+
+	proc->mm->user_static_addr = USER_STATIC_START;
+	proc->mm->user_static_size = sizeof(struct user_input_blob);
+	proc->mm->user_static_blob =
+			(struct user_input_blob *)calloc(1, proc->mm->user_static_size);
+	if (proc->mm->user_static_blob == NULL) {
+		return;
+	}
+
+	proc->mm->user_static_blob->time_slot = (uint64_t)time_slot;
+	proc->mm->user_static_blob->num_cpus = (uint64_t)num_cpus;
+	proc->mm->user_static_blob->num_processes = (uint64_t)num_processes;
+	proc->mm->user_static_blob->process_start_time =
+			(uint64_t)ld_processes.start_time[proc_idx];
+#ifdef MLQ_SCHED
+	proc->mm->user_static_blob->process_prio = (uint64_t)ld_processes.prio[proc_idx];
+#else
+	proc->mm->user_static_blob->process_prio = 0;
+#endif
+#ifdef MM_PAGING
+	proc->mm->user_static_blob->memram_size = (uint64_t)memramsz;
+	for (int sit = 0; sit < PAGING_MAX_MMSWP; sit++) {
+		proc->mm->user_static_blob->memswap_size[sit] = (uint64_t)memswpsz[sit];
+	}
+#endif
+	proc->mm->user_static_blob->user_static_start = USER_STATIC_START;
+	proc->mm->user_static_blob->user_static_end = USER_STATIC_END;
+}
+
 static pthread_mutex_t sync_log_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void sync_printf(const char *fmt, ...)
@@ -189,6 +246,7 @@ static void * ld_routine(void * args) {
 	os.mm = malloc(sizeof(struct mm_struct));
 	memset(os.mm, 0, sizeof(struct mm_struct));
 	krnl_init_mm(os.mm, &os);
+	init_krnl_static_region();
 #endif
 #else
 	os.krnl_pgd = malloc(PAGING_MAX_PGN * sizeof(uint32_t));
@@ -207,8 +265,9 @@ static void * ld_routine(void * args) {
 			ld_next_slot(timer_id);
 		}
 #ifdef MM_PAGING
-		proc->mm = malloc(sizeof(struct mm_struct));
+		proc->mm = calloc(1, sizeof(struct mm_struct));
 		init_mm(proc->mm, proc);
+		init_user_static_region(proc, i);
 		krnl->mram = mram;
 		krnl->mswp = mswp;
 		krnl->active_mswp = active_mswp;
