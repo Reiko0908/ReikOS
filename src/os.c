@@ -48,10 +48,7 @@ struct cpu_args {
 	int id;
 };
 
-static void init_kernel_static_region(void) {
-#ifndef MM64
-	return;
-#else
+static void init_krnl_static_region(void) {
 	if (os.krnl_static_blob != NULL) {
 		return;
 	}
@@ -73,22 +70,9 @@ static void init_kernel_static_region(void) {
 	os.krnl_static_blob->page_size = PAGE_SIZE;
 	os.krnl_static_blob->krnl_static_start = KRNL_STATIC_START;
 	os.krnl_static_blob->krnl_static_end = KRNL_STATIC_END;
-
-	if (os.mm != NULL) {
-		os.mm->symrgtbl[0].rg_start = os.krnl_static_addr;
-		os.mm->symrgtbl[0].rg_end = KRNL_STATIC_END;
-		os.mm->symrgtbl[0].mode_bit = 0;
-		os.mm->symrgtbl[0].vmaid = 0;
-	}
-#endif
 }
 
 static void init_user_static_region(struct pcb_t *proc, int proc_idx) {
-#ifndef MM64
-	(void)proc;
-	(void)proc_idx;
-	return;
-#else
 	if (proc == NULL || proc->mm == NULL || proc->mm->user_static_blob != NULL) {
 		return;
 	}
@@ -119,12 +103,6 @@ static void init_user_static_region(struct pcb_t *proc, int proc_idx) {
 #endif
 	proc->mm->user_static_blob->user_static_start = USER_STATIC_START;
 	proc->mm->user_static_blob->user_static_end = USER_STATIC_END;
-
-	proc->mm->symrgtbl[PAGING_MAX_SYMTBL_SZ - 1].rg_start = proc->mm->user_static_addr;
-	proc->mm->symrgtbl[PAGING_MAX_SYMTBL_SZ - 1].rg_end = USER_STATIC_END;
-	proc->mm->symrgtbl[PAGING_MAX_SYMTBL_SZ - 1].mode_bit = 1;
-	proc->mm->symrgtbl[PAGING_MAX_SYMTBL_SZ - 1].vmaid = 0;
-#endif
 }
 
 static pthread_mutex_t sync_log_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -268,7 +246,7 @@ static void * ld_routine(void * args) {
 	os.mm = malloc(sizeof(struct mm_struct));
 	memset(os.mm, 0, sizeof(struct mm_struct));
 	krnl_init_mm(os.mm, &os);
-	init_kernel_static_region();
+	init_krnl_static_region();
 #endif
 #else
 	os.krnl_pgd = malloc(PAGING_MAX_PGN * sizeof(uint32_t));
