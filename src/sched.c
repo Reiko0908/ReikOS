@@ -26,31 +26,50 @@ struct ht_node {
     struct pcb_t *p;
     struct ht_node *next;
 };
+
 static struct ht_node *sched_ht[SCHED_HT_SIZE];
-static inline uint32_t sched_ht_idx(uint32_t pid) { return pid & (SCHED_HT_SIZE - 1); }
+static inline uint32_t sched_ht_idx(uint32_t pid) {
+    return pid & (SCHED_HT_SIZE - 1);
+}
+
 static struct pcb_t *ht_lookup_locked(uint32_t pid) {
 	struct ht_node *n = sched_ht[sched_ht_idx(pid)];
-	while (n) { if (n->pid == pid) return n->p; n = n->next; }
+	while (n) {
+	if (n->pid == pid) return n->p;
+	n = n->next;
+	}
 	return NULL;
 }
+
 static void ht_insert_locked(uint32_t pid, struct pcb_t *p) {
-	uint32_t idx = sched_ht_idx(pid);
-	struct ht_node *n = sched_ht[idx];
-	while (n) { if (n->pid == pid) { n->p = p; return; } n = n->next; }
-	n = malloc(sizeof(*n)); n->pid = pid; n->p = p; n->next = sched_ht[idx]; sched_ht[idx] = n;
+  uint32_t idx = sched_ht_idx(pid);
+  struct ht_node *n = sched_ht[idx];
+  while (n) {
+    if (n->pid == pid) {
+      n->p = p;
+      return;
+    }
+    n = n->next;
+  }
+  n = malloc(sizeof(*n));
+  n->pid = pid;
+  n->p = p;
+  n->next = sched_ht[idx];
+  sched_ht[idx] = n;
 }
+
 static void ht_remove_locked(uint32_t pid) {
-	uint32_t idx = sched_ht_idx(pid);
-	struct ht_node **pp = &sched_ht[idx];
-	while (*pp) {
-		if ((*pp)->pid == pid) {
-			struct ht_node *rem = *pp;
-			*pp = rem->next;
-			free(rem);
-			return;
-		}
-		pp = &(*pp)->next;
-	}
+  uint32_t idx = sched_ht_idx(pid);
+  struct ht_node **pp = &sched_ht[idx];
+  while (*pp) {
+    if ((*pp)->pid == pid) {
+      struct ht_node *rem = *pp;
+      *pp = rem->next;
+      free(rem);
+      return;
+    }
+    pp = &(*pp)->next;
+  }
 }
 
 static struct queue_t running_list;
