@@ -23,8 +23,6 @@
  * @bksysnet: in long address mode of 64bit or original 32bit
  * the address type need to be redefined
  */
-
-
 #define ADDR_TYPE uint64_t
 
 typedef char BYTE;
@@ -180,4 +178,3 @@ struct memphy_struct {
 };
 
 #endif
-

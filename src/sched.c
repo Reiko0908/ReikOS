@@ -7,49 +7,94 @@
  * personal permission to use and modify the Licensed Source Code
  * for the sole purpose of studying while attending the course CO2018.
  */
-
-#include "../include/queue.h"
+#include "queue.h"
 #include "sched.h"
 #include <pthread.h>
-
-#include <stdlib.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+
 static struct queue_t ready_queue;
 static struct queue_t run_queue;
 static pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
-
-/* Simple pid -> proc hash table to avoid linear scans */
-#define SCHED_HT_BITS 10
-#define SCHED_HT_SIZE (1 << SCHED_HT_BITS)
-struct ht_node { uint32_t pid; struct pcb_t *p; struct ht_node *next; };
-static struct ht_node *sched_ht[SCHED_HT_SIZE];
-static inline uint32_t sched_ht_idx(uint32_t pid) { return pid & (SCHED_HT_SIZE - 1); }
-static struct pcb_t *ht_lookup_locked(uint32_t pid) {
-	struct ht_node *n = sched_ht[sched_ht_idx(pid)];
-	while (n) { if (n->pid == pid) return n->p; n = n->next; }
-	return NULL;
-}
-static void ht_insert_locked(uint32_t pid, struct pcb_t *p) {
-	uint32_t idx = sched_ht_idx(pid);
-	struct ht_node *n = sched_ht[idx];
-	while (n) { if (n->pid == pid) { n->p = p; return; } n = n->next; }
-	n = malloc(sizeof(*n)); n->pid = pid; n->p = p; n->next = sched_ht[idx]; sched_ht[idx] = n;
-}
-static void ht_remove_locked(uint32_t pid) {
-	uint32_t idx = sched_ht_idx(pid);
-	struct ht_node **pp = &sched_ht[idx];
-	while (*pp) {
-		if ((*pp)->pid == pid) {
-			struct ht_node *rem = *pp;
-			*pp = rem->next;
-			free(rem);
-			return;
-		}
-		pp = &(*pp)->next;
-	}
-}
-
 static struct queue_t running_list;
+
+/*
+ * PID hash table for O(1) lookup in find_proc_by_pid.
+ */
+
+
+struct ht_node {
+  uint32_t pid;
+  struct pcb_t *p;
+  struct ht_node *next;
+};
+
+static struct ht_node ht_pool[SCHED_HT_SIZE];
+static struct ht_node *ht_free;
+static struct ht_node *sched_ht[SCHED_HT_SIZE];
+
+static inline uint32_t sched_ht_idx(uint32_t pid) {
+  return pid & (SCHED_HT_SIZE - 1);
+}
+
+static void ht_init(void) {
+  for (int i = 0; i < SCHED_HT_SIZE; i++)
+    sched_ht[i] = NULL;
+  ht_free = NULL;
+  for (int i = SCHED_HT_POOL - 1; i >= 0; i--) {
+    ht_pool[i].next = ht_free;
+    ht_free = &ht_pool[i];
+  }
+}
+
+static struct pcb_t *ht_lookup_locked(uint32_t pid) {
+  struct ht_node *n = sched_ht[sched_ht_idx(pid)];
+  while (n) {
+    if (n->pid == pid)
+      return n->p;
+    n = n->next;
+  }
+  return NULL;
+}
+
+static void ht_insert_locked(uint32_t pid, struct pcb_t *p) {
+  uint32_t idx = sched_ht_idx(pid);
+  struct ht_node *n = sched_ht[idx];
+  while (n) {
+    if (n->pid == pid) {
+      n->p = p;
+      return;
+    }
+    n = n->next;
+  }
+  n = ht_free;
+  if (!n) {
+    fprintf(stderr, "Error: PID hash table pool exhausted\n");
+    exit(1);
+  }
+  ht_free = n->next;
+  n->pid = pid;
+  n->p = p;
+  n->next = sched_ht[idx];
+  sched_ht[idx] = n;
+}
+
+static void ht_remove_locked(uint32_t pid) {
+  uint32_t idx = sched_ht_idx(pid);
+  struct ht_node **pp = &sched_ht[idx];
+  while (*pp) {
+    if ((*pp)->pid == pid) {
+      struct ht_node *rem = *pp;
+      *pp = (*pp)->next;
+      rem->next = ht_free;
+      ht_free = rem;
+      return;
+    }
+    pp = &(*pp)->next;
+  }
+}
+
 #ifdef MLQ_SCHED
 static struct queue_t mlq_ready_queue[MAX_PRIO];
 static int slot[MAX_PRIO];
@@ -75,59 +120,55 @@ void sched_wait_for_loader(uint64_t time, int is_done) {
 }
 
 int queue_empty(void) {
-	int is_empty;
-	pthread_mutex_lock(&queue_lock);
+  int is_empty;
+  pthread_mutex_lock(&queue_lock);
 #ifdef MLQ_SCHED
-	unsigned long prio;
-	for (prio = 0; prio < MAX_PRIO; prio++)
-		if(!empty(&mlq_ready_queue[prio])) {
-			pthread_mutex_unlock(&queue_lock);
-			return -1;
-		}
+  unsigned long prio;
+  for (prio = 0; prio < MAX_PRIO; prio++)
+    if (!empty(&mlq_ready_queue[prio])) {
+      pthread_mutex_unlock(&queue_lock);
+      return -1;
+    }
 #endif
-	is_empty = (empty(&ready_queue) && empty(&run_queue));
-	pthread_mutex_unlock(&queue_lock);
-	return is_empty;
+  is_empty = (empty(&ready_queue) && empty(&run_queue));
+  pthread_mutex_unlock(&queue_lock);
+  return is_empty;
 }
 
 void init_scheduler(void) {
 #ifdef MLQ_SCHED
-    int i ;
+  int i;
 
-	for (i = 0; i < MAX_PRIO; i ++) {
-		mlq_ready_queue[i].size = 0;
-		slot[i] = MAX_PRIO - i; 
-	}
+  for (i = 0; i < MAX_PRIO; i++) {
+    mlq_ready_queue[i].size = 0;
+    slot[i] = MAX_PRIO - i;
+  }
 #endif
-	ready_queue.size = 0;
-	run_queue.size = 0;
-	running_list.size = 0;
-	pthread_mutex_init(&queue_lock, NULL);
-
-    /* Clear hash table */
-    for (int i = 0; i < SCHED_HT_SIZE; i++) sched_ht[i] = NULL;
+  ready_queue.size = 0;
+  run_queue.size = 0;
+  running_list.size = 0;
+  pthread_mutex_init(&queue_lock, NULL);
+  ht_init();
 }
 
-struct pcb_t * find_proc_by_pid(uint32_t pid) {
-	struct pcb_t *proc = NULL;
-
-	/* Scheduler queues are shared by loader, CPU threads, and syscalls. */
-	pthread_mutex_lock(&queue_lock);
-	/* Fast path: hash-table lookup */
-	proc = ht_lookup_locked(pid);
-	pthread_mutex_unlock(&queue_lock);
-	return proc;
+struct pcb_t *find_proc_by_pid(uint32_t pid) {
+  struct pcb_t *proc = NULL;
+  pthread_mutex_lock(&queue_lock);
+  proc = ht_lookup_locked(pid);
+  pthread_mutex_unlock(&queue_lock);
+  return proc;
 }
 
 #ifdef MLQ_SCHED
-/* 
+/*
  *  Stateful design for routine calling
  *  based on the priority and our MLQ policy
  *  We implement stateful here using transition technique
- *  State representation   prio = 0 .. MAX_PRIO, curr_slot = 0..(MAX_PRIO - prio)
+ *  State representation   prio = 0 .. MAX_PRIO, curr_slot = 0..(MAX_PRIO -
+ * prio)
  */
-struct pcb_t * get_mlq_proc(void) {
-  struct pcb_t * proc = NULL;
+struct pcb_t *get_mlq_proc(void) {
+  struct pcb_t *proc = NULL;
   pthread_mutex_lock(&queue_lock);
 
   /*TODO: get a process from PRIORITY [ready_queue].
@@ -166,110 +207,101 @@ struct pcb_t * get_mlq_proc(void) {
 
   if (found != -1) {
     proc = dequeue(&mlq_ready_queue[found]);
-    if (proc != NULL) slot[found]--;
+    if (proc != NULL)
+      slot[found]--;
   }
 
   if (proc != NULL)
     enqueue(&running_list, proc);
   pthread_mutex_unlock(&queue_lock);
-  return proc;	
+  return proc;
 }
 
-void put_mlq_proc(struct pcb_t * proc) {
-	proc->krnl->ready_queue = &ready_queue;
-	proc->krnl->mlq_ready_queue = mlq_ready_queue;
-	proc->krnl->running_list = &running_list;
+void put_mlq_proc(struct pcb_t *proc) {
+  proc->krnl->ready_queue = &ready_queue;
+  proc->krnl->mlq_ready_queue = mlq_ready_queue;
+  proc->krnl->running_list = &running_list;
 
-	/* TODO: put running proc to running_list 
-	 *       It worth to protect by a mechanism.
-	 */
-
-	pthread_mutex_lock(&queue_lock);
-	purgequeue(&running_list, proc);
-	enqueue(&mlq_ready_queue[proc->prio], proc);
-	/* Ensure pid->proc mapping exists for lookups */
-	ht_insert_locked(proc->pid, proc);
-	pthread_mutex_unlock(&queue_lock);
+  /* TODO: put running proc to running_list
+   *       It worth to protect by a mechanism.
+   */
+  pthread_mutex_lock(&queue_lock);
+  purgequeue(&running_list, proc);
+  enqueue(&mlq_ready_queue[proc->prio], proc);
+  /* Ensure pid->proc mapping exists for lookups */
+  ht_insert_locked(proc->pid, proc);
+  pthread_mutex_unlock(&queue_lock);
 }
 
-void add_mlq_proc(struct pcb_t * proc) {
-	proc->krnl->ready_queue = &ready_queue;
-	proc->krnl->mlq_ready_queue = mlq_ready_queue;
-	proc->krnl->running_list = &running_list;
+void add_mlq_proc(struct pcb_t *proc) {
+  proc->krnl->ready_queue = &ready_queue;
+  proc->krnl->mlq_ready_queue = mlq_ready_queue;
+  proc->krnl->running_list = &running_list;
 
-	/* TODO: put running proc to running_list
-	 *       It worth to protect by a mechanism.
-	 */
-       
-	pthread_mutex_lock(&queue_lock);
-	enqueue(&mlq_ready_queue[proc->prio], proc);
-	/* Track process by pid for fast lookup */
-	ht_insert_locked(proc->pid, proc);
-	pthread_mutex_unlock(&queue_lock);	
+  /* TODO: put running proc to running_list
+   *       It worth to protect by a mechanism.
+   */
+  pthread_mutex_lock(&queue_lock);
+  enqueue(&mlq_ready_queue[proc->prio], proc);
+  /* Track process by pid for fast lookup */
+  ht_insert_locked(proc->pid, proc);
+  pthread_mutex_unlock(&queue_lock);
 }
 
-struct pcb_t * get_proc(void) {
-	return get_mlq_proc();
-}
-
-void put_proc(struct pcb_t * proc) {
-	return put_mlq_proc(proc);
-}
-
-void add_proc(struct pcb_t * proc) {
-	return add_mlq_proc(proc);
-}
+struct pcb_t *get_proc(void) { return get_mlq_proc(); }
+void put_proc(struct pcb_t *proc) { return put_mlq_proc(proc); }
+void add_proc(struct pcb_t *proc) { return add_mlq_proc(proc); }
 #else
-struct pcb_t * get_proc(void) {
-	struct pcb_t * proc = NULL;
+struct pcb_t *get_proc(void) {
+  struct pcb_t *proc = NULL;
 
-	pthread_mutex_lock(&queue_lock);
-	/*TODO: get a process from [ready_queue].
-	 *       It worth to protect by a mechanism.
-	 */
-	proc = dequeue(&ready_queue);
-	if (proc != NULL) {
-		enqueue(&running_list, proc);
-		/* Ensure mapping exists (in case proc was added elsewhere) */
-		ht_insert_locked(proc->pid, proc);
-	}
-	pthread_mutex_unlock(&queue_lock);
+  pthread_mutex_lock(&queue_lock);
+  /*TODO: get a process from [ready_queue].
+   *       It worth to protect by a mechanism.
+   */
+  proc = dequeue(&ready_queue);
+  if (proc != NULL) {
+    enqueue(&running_list, proc);
+    /* Ensure mapping exists (in case proc was added elsewhere) */
+    ht_insert_locked(proc->pid, proc);
+  }
+  pthread_mutex_unlock(&queue_lock);
 
-	return proc;
+  return proc;
 }
 
-void put_proc(struct pcb_t * proc) {
-	proc->krnl->ready_queue = &ready_queue;
-	proc->krnl->running_list = &running_list;
+void put_proc(struct pcb_t *proc) {
+  proc->krnl->ready_queue = &ready_queue;
+  proc->krnl->running_list = &running_list;
 
-	/* TODO: put running proc to running_list 
-	 *       It worth to protect by a mechanism.
-	 */
+  /* TODO: put running proc to running_list
+   *       It worth to protect by a mechanism.
+   */
 
-	pthread_mutex_lock(&queue_lock);
-	purgequeue(&running_list, proc);
-	enqueue(&ready_queue, proc);
-	pthread_mutex_unlock(&queue_lock);
+  pthread_mutex_lock(&queue_lock);
+  purgequeue(&running_list, proc);
+  enqueue(&ready_queue, proc);
+  pthread_mutex_unlock(&queue_lock);
 }
 
-void add_proc(struct pcb_t * proc) {
-	proc->krnl->ready_queue = &ready_queue;
-	proc->krnl->running_list = &running_list;
+void add_proc(struct pcb_t *proc) {
+  proc->krnl->ready_queue = &ready_queue;
+  proc->krnl->running_list = &running_list;
 
-	/* TODO: put running proc to running_list 
-	 *       It worth to protect by a mechanism.
-	 */
+  /* TODO: put running proc to running_list
+   *       It worth to protect by a mechanism.
+   */
 
-	pthread_mutex_lock(&queue_lock);
-	enqueue(&ready_queue, proc);
-	/* Track process by pid for fast lookup */
-	ht_insert_locked(proc->pid, proc);
-	pthread_mutex_unlock(&queue_lock);	
+  pthread_mutex_lock(&queue_lock);
+  enqueue(&ready_queue, proc);
+  /* Track process by pid for fast lookup */
+  ht_insert_locked(proc->pid, proc);
+  pthread_mutex_unlock(&queue_lock);
 }
 #endif
 
 void sched_remove_proc(uint32_t pid) {
-    pthread_mutex_lock(&queue_lock);
-    ht_remove_locked(pid);
-    pthread_mutex_unlock(&queue_lock);
+  pthread_mutex_lock(&queue_lock);
+  ht_remove_locked(pid);
+  pthread_mutex_unlock(&queue_lock);
 }

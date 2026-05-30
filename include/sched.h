@@ -2,6 +2,7 @@
 #define SCHED_H
 
 #include <stdint.h>
+#include "queue.h"
 
 struct pcb_t;
 
@@ -10,6 +11,15 @@ struct pcb_t;
 #endif
 
 #define MAX_PRIO 140
+#define SCHED_HT_BITS 10
+#define SCHED_HT_SIZE (1 << SCHED_HT_BITS)
+#define SCHED_HT_MASK (SCHED_HT_SIZE - 1)
+
+#ifdef MLQ_SCHED
+#define SCHED_HT_POOL (MAX_PRIO * MAX_QUEUE_SIZE)
+#else
+#define SCHED_HT_POOL MAX_QUEUE_SIZE
+#endif
 
 void sched_signal_loader_done(uint64_t time);
 void sched_wait_for_loader(uint64_t time, int is_done);
@@ -35,5 +45,3 @@ struct pcb_t * find_proc_by_pid(uint32_t pid);
 void sched_remove_proc(uint32_t pid);
 
 #endif
-
-
