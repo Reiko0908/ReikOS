@@ -297,8 +297,7 @@ addr_t alloc_pages_range(struct pcb_t *caller, int req_pgnum,
       }
 
       fpn = PAGING_PTE_FPN(pte_get_entry(caller, victim_pgn));
-      __swap_cp_page(caller->krnl->mram, fpn, caller->krnl->active_mswp,
-                     swpfpn);
+      __swap_cp_page(caller->krnl->mram, fpn, caller->krnl->active_mswp, swpfpn);
       pte_set_swap(caller, victim_pgn, 0, swpfpn);
       /* Zero the recycled frame */
       for (int ci = 0; ci < PAGING64_PAGESZ; ci++)
